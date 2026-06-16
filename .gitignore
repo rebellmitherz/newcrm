@@ -10,6 +10,10 @@ crm.db-shm
 crm_export.json
 crm_backups/
 
+# Teilen-Setup (lokal, nicht versionieren)
+cloudflared.exe
+share_token.txt
+
 # Editor / OS
 .DS_Store
 Thumbs.db

@@ -80,7 +80,7 @@ function startApp() {
   bindChrome();
   refreshFilters();
   refreshDueBadge();
-  navigate("dashboard");
+  navigate("agenda");
 }
 
 /* ---------- Chrome (Nav, Suche, Filter) ---------- */
