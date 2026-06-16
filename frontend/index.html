@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rebellsystem CRM</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- Login (nur wenn Token aktiv) -->
+  <div id="login" class="login-overlay hidden">
+    <form id="login-form" class="login-card">
+      <h1>Rebellsystem CRM</h1>
+      <p>Zugriffstoken eingeben</p>
+      <input type="password" id="token-input" placeholder="Token" autocomplete="current-password" />
+      <button type="submit">Anmelden</button>
+      <div id="login-error" class="login-error"></div>
+    </form>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">▰</span>
+        <span class="brand-name">Rebellsystem<small>CRM</small></span>
+      </div>
+      <nav class="nav">
+        <a data-view="dashboard" class="nav-item active">📊 Dashboard</a>
+        <a data-view="agenda" class="nav-item">📅 Agenda <span id="nav-due" class="nav-badge hidden"></span></a>
+        <a data-view="pipeline" class="nav-item">🗂️ Pipeline</a>
+        <a data-view="leads" class="nav-item">📇 Leads</a>
+        <a data-view="projects" class="nav-item">📁 Projekte</a>
+        <a data-view="import" class="nav-item">⬆️ Import</a>
+      </nav>
+      <div class="sidebar-foot">
+        <label class="proj-filter-label">Bereich</label>
+        <select id="global-area" class="proj-filter" style="margin-bottom:10px">
+          <option value="">Alle Bereiche</option>
+        </select>
+        <label class="proj-filter-label">Projekt</label>
+        <select id="global-project" class="proj-filter">
+          <option value="">Alle Projekte</option>
+        </select>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div id="view-title" class="view-title">Dashboard</div>
+        <div class="topbar-actions">
+          <input type="search" id="search" placeholder="🔎 Suche Firma, Kontakt, E-Mail, Stadt…" />
+        </div>
+      </header>
+      <section id="view" class="view"></section>
+    </main>
+  </div>
+
+  <!-- Lead-Detail Drawer -->
+  <div id="drawer" class="drawer hidden">
+    <div class="drawer-backdrop" data-close-drawer></div>
+    <div class="drawer-panel" id="drawer-panel"></div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

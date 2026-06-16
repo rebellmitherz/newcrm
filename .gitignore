@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# CRM-Daten (Quelle der Wahrheit / PII) — NICHT versionieren, separat sichern
+crm.db
+crm.db-wal
+crm.db-shm
+crm_export.json
+crm_backups/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
