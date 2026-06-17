@@ -698,7 +698,10 @@ async function openLead(id) {
     <div class="drawer-head">
       <div class="dh-top">
         <h2>${esc(lead.company_name) || "Lead"}</h2>
-        <button class="btn sm" id="lead-edit">✏️ Bearbeiten</button>
+        <div class="row" style="gap:6px">
+          <button class="btn sm" id="lead-coach">📞 Coach</button>
+          <button class="btn sm" id="lead-edit">✏️ Bearbeiten</button>
+        </div>
       </div>
       <div class="muted">${esc(lead.contact_name) || ""} ${lead.city ? "· " + esc(lead.city) : ""}</div>
       <div class="stage-pills">
@@ -759,6 +762,22 @@ async function openLead(id) {
   }));
 
   $("#lead-edit").addEventListener("click", () => openLeadEdit(id, lead));
+
+  $("#lead-coach").addEventListener("click", async () => {
+    const btn = $("#lead-coach");
+    btn.disabled = true;
+    btn.textContent = "⏳ …";
+    try {
+      await api(`/api/leads/${id}/coach`, { method: "POST" });
+      btn.textContent = "✅ Kontext geladen";
+      toast("ClouseAgent-Kontext gespeichert — jetzt start_coach.bat starten!");
+    } catch (e) {
+      btn.textContent = "📞 Coach";
+      toast("Fehler: " + e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   $("#act-add").addEventListener("click", async () => {
     const content = $("#act-content").value.trim();

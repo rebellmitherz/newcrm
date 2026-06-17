@@ -8,10 +8,12 @@ Ohne Token läuft alles offen (lokaler Betrieb).
 """
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import sqlite3
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends
@@ -345,6 +347,53 @@ def delete_lead(lid: int) -> dict[str, Any]:
         conn.close()
     export.request_snapshot()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# ClouseAgent-Hook
+# ---------------------------------------------------------------------------
+
+CLOUSE_DIR = Path(r"C:\Users\micha\Desktop\ClouseAgent")
+CLOUSE_CONTEXT_FILE = CLOUSE_DIR / "lead_context.json"
+
+
+@app.post("/api/leads/{lid}/coach", dependencies=[Depends(require_token)])
+def start_coach(lid: int) -> dict[str, Any]:
+    """Schreibt Lead-Kontext in ClouseAgent/lead_context.json und gibt Start-Info zurück."""
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT * FROM leads WHERE id=?", (lid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Lead nicht gefunden")
+        lead = db.dict_from_row(row)
+    finally:
+        conn.close()
+
+    context = {
+        "lead_id": lid,
+        "company": lead.get("company_name") or "",
+        "contact": lead.get("contact_name") or "",
+        "role": lead.get("role") or "",
+        "industry": lead.get("industry") or "",
+        "city": lead.get("city") or "",
+        "website": lead.get("website") or "",
+        "email": lead.get("email") or "",
+        "phone": lead.get("phone") or "",
+        "score": lead.get("score"),
+        "grade": lead.get("grade") or "",
+        "next_action": lead.get("next_action_label") or "",
+        "stage": lead.get("stage") or "",
+        "loaded_at": db.now_iso(),
+    }
+
+    if not CLOUSE_DIR.exists():
+        raise HTTPException(503, f"ClouseAgent-Ordner nicht gefunden: {CLOUSE_DIR}")
+
+    CLOUSE_CONTEXT_FILE.write_text(
+        json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    return {"ok": True, "context_written": str(CLOUSE_CONTEXT_FILE), "lead": context}
 
 
 # ---------------------------------------------------------------------------
