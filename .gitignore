@@ -12,6 +12,10 @@ crm_backups/
 
 # Teilen-Setup (lokal, nicht versionieren)
 cloudflared.exe
+ngrok.exe
+ngrok.zip
+ngrok_token.txt
+ngrok_domain.txt
 share_token.txt
 
 # Editor / OS
