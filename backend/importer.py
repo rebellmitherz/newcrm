@@ -88,8 +88,8 @@ def _norm_temperature(raw: dict[str, Any]) -> str | None:
 def normalize_lead(raw: dict[str, Any]) -> dict[str, Any]:
     """Wandelt ein beliebiges Quell-Lead in das CRM-Schema."""
     lead = {
-        "company_name": _clean(_first(raw, FIELD_ALIASES["company_name"])),
-        "contact_name": _clean(_build_contact_name(raw)),
+        "company_name": _clean_company_name(_first(raw, FIELD_ALIASES["company_name"])),
+        "contact_name": _clean_contact_name(_build_contact_name(raw)),
         "role": _clean(_first(raw, FIELD_ALIASES["role"])),
         "email": _clean_email(_first(raw, FIELD_ALIASES["email"])),
         "phone": _clean(_first(raw, FIELD_ALIASES["phone"])),
@@ -117,9 +117,94 @@ def _clean(v: Any) -> str | None:
     return s or None
 
 
+# ---------------------------------------------------------------------------
+# Putz-Schicht: Firmennamen + E-Mails säubern, bevor ein Lead ins CRM geht.
+# Schützt das (Kunden-)CRM vor verschmutzten Engine-Daten — gilt für JEDEN
+# Import (Engine + manuell). Verwirft nie ganze Leads; säubert nur Felder.
+# ---------------------------------------------------------------------------
+
+# Rechtsformen-Suffix (für „echten" Firmennamen aus Fußzeilen-Text extrahieren).
+_LEGAL_SUFFIX = (
+    r"(?:GmbH(?:\s*&\s*Co\.?\s*KG)?|gGmbH|UG(?:\s*\(haftungsbeschr[äa]nkt\))?|"
+    r"AG|KGaA|KG|GbR|OHG|mbH|e\.?\s?K\.?|e\.?\s?V\.?|SE|Ltd\.?|Inc\.?|PartG)"
+)
+# Wörter, die einen „Firmennamen" als gescrapten Fließtext/Fußzeile entlarven.
+_NAME_JUNK_WORDS = (
+    "liegt", "ausschließlich", "ausschliesslich", "copyright", "alle rechte",
+    "beiträge", "beitraege", "impressum", "verantwortlich", "inhalte dieser",
+    "alle angaben", "stand:", "zuletzt aktualisiert",
+)
+# Führende Etiketten wie „Name X" / „Firma: X" (kommt aus manchen Scrapes).
+_NAME_LABEL_PREFIX = re.compile(r"^(?:name|firma|company|unternehmen)\s*[:\-]?\s+", re.I)
+
+# E-Mail-Postfächer, die KEIN echter Outreach-Kontakt sind → werden entfernt
+# (Lead bleibt, nur die falsche Adresse fliegt raus). info@/kontakt@/office@
+# bleiben bewusst erhalten (legitime generische Postfächer = Stufe C).
+_BAD_EMAIL_LOCALPARTS = {
+    "datenschutz", "privacy", "dsgvo", "legal", "recht", "abuse", "spam",
+    "postmaster", "mailer-daemon", "webmaster", "hostmaster", "noreply",
+    "no-reply", "donotreply", "do-not-reply", "newsletter", "marketing-cloud",
+}
+
+
+# Führende Füllwörter (Artikel/Präpositionen/Hilfsverben), die nach der
+# Extraktion vorne übrig bleiben können ("ist die <Marke> GmbH"). Nur EXAKTE
+# Treffer aus dieser Liste werden abgeschnitten → echte (auch klein-
+# geschriebene) Marken wie "softgarden" bleiben unangetastet.
+_LEADING_FILLER = {
+    "ist", "die", "der", "das", "und", "bei", "von", "mit", "im", "in", "des",
+    "dem", "den", "eine", "einer", "eines", "als", "the", "of", "by", "for",
+    "marke", "haftung", "beschränkter", "beschraenkter",
+}
+
+
+def _strip_leading_filler(name: str) -> str:
+    parts = name.split()
+    while len(parts) > 1 and parts[0].lower().strip(".,") in _LEADING_FILLER:
+        parts.pop(0)
+    return " ".join(parts)
+
+
+def _clean_company_name(v: Any) -> str | None:
+    s = _clean(v)
+    if not s:
+        return None
+    s = _NAME_LABEL_PREFIX.sub("", s).strip()
+    s = re.sub(r"\s+", " ", s)
+    low = s.lower()
+    looks_like_fragment = len(s.split()) > 6 or any(w in low for w in _NAME_JUNK_WORDS)
+    if looks_like_fragment:
+        # 1) „… bei (der) <Firma> GmbH" → Firma hinter „bei (der)"
+        m = re.search(r"\bbei\s+(?:der\s+)?(.+?" + _LEGAL_SUFFIX + r")\b", s, re.I)
+        if m:
+            return _strip_leading_filler(m.group(1).strip())
+        # 2) sonst: letzter Rechtsform-Block (bis zu 4 Wörter vor dem Suffix)
+        m = re.search(r"([\wÄÖÜäöüß.&\-]+(?:\s+[\wÄÖÜäöüß.&\-]+){0,3}\s+" + _LEGAL_SUFFIX + r")\b", s)
+        if m:
+            return _strip_leading_filler(m.group(1).strip())
+        # nicht rettbar → Original lassen (nicht verschlimmern)
+    return s
+
+
+def _clean_contact_name(v: Any) -> str | None:
+    s = _clean(v)
+    if not s:
+        return None
+    # Rolle, die an den Namen geklebt wurde, abtrennen ("Max Muster Mitgründer").
+    s = re.sub(r"\s+(Mitgründer|Mitgruender|Gründer|Gruender|Geschäftsführer|"
+               r"Geschaeftsfuehrer|CEO|CTO|CFO|Inhaber|Geschäftsführung)\b.*$", "", s, flags=re.I).strip()
+    return s or None
+
+
 def _clean_email(v: Any) -> str | None:
     s = _clean(v)
-    return s.lower() if s else None
+    if not s:
+        return None
+    s = s.lower()
+    local = s.split("@", 1)[0]
+    if local in _BAD_EMAIL_LOCALPARTS or local.startswith(("noreply", "no-reply", "donotreply")):
+        return None  # falscher Kontakt → entfernen, Lead bleibt erhalten
+    return s
 
 
 def _dedup_key(lead: dict[str, Any]) -> str:
