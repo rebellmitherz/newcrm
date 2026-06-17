@@ -29,6 +29,31 @@ from typing import Optional
 from backend import db, importer, export, main as svc
 
 
+# Reihenfolge = Priorität: die Signal-Suche (deine Strategie) zuerst, dann die
+# normale Pipeline. Es gewinnt aber immer die *neueste, nicht-leere* Datei —
+# so landet automatisch die zuletzt gelaufene Suche im CRM.
+_CANDIDATE_FILES = ("signal_leads.json", "hot_leads.json", "leads.json")
+
+
+def find_latest_engine_file(latest_dir: str | Path) -> Optional[Path]:
+    """Sucht im Engine-Output-Ordner die neueste, nicht-leere Lead-Datei.
+
+    Gibt den Pfad zurück oder None, wenn keine brauchbare Datei existiert.
+    Leere Dateien (0 Byte, z. B. hot_leads.json nach einem Signal-Lauf) werden
+    übersprungen — sonst importiert man aus Versehen "nichts".
+    """
+    latest_dir = Path(latest_dir)
+    best: Optional[Path] = None
+    best_mtime = -1.0
+    for name in _CANDIDATE_FILES:
+        f = latest_dir / name
+        if f.exists() and f.stat().st_size > 2:  # > "[]" o.ä.
+            m = f.stat().st_mtime
+            if m > best_mtime:
+                best, best_mtime = f, m
+    return best
+
+
 @dataclass
 class ConnectorResult:
     ok: bool
@@ -38,6 +63,7 @@ class ConnectorResult:
     test_noise: int = 0
     projects: int = 0
     db_path: str = ""
+    source_file: str = ""
     error: str = ""
 
 
@@ -104,6 +130,7 @@ def import_engine_output(
     return ConnectorResult(
         ok=True, fmt=fmt, inserted=inserted, duplicates=skipped,
         test_noise=dropped_noise, projects=len(projects), db_path=str(db_path),
+        source_file=str(engine_file),
     )
 
 
@@ -113,7 +140,11 @@ def main() -> int:
 
     ap = argparse.ArgumentParser(
         description="Engine-Ausgabe in eine Mandanten-CRM-DB importieren (read-only zur Engine)")
-    ap.add_argument("engine_file", help="Pfad zu hot_leads.json / leads.json / leads.csv")
+    ap.add_argument("engine_file", nargs="?", default=None,
+                    help="Pfad zu signal_leads.json / hot_leads.json / leads.json / leads.csv")
+    ap.add_argument("--latest-dir", default=None,
+                    help="Engine-Output-Ordner (z. B. .../output/latest). Nimmt automatisch "
+                         "die NEUESTE nicht-leere Lead-Datei (Signal- vor Branchensuche).")
     ap.add_argument("--db", required=True,
                     help="Ziel-CRM-DB des Mandanten, z. B. product/data/<mandant>/crm.db")
     ap.add_argument("--area", default="B2B Agenten System")
@@ -122,7 +153,20 @@ def main() -> int:
     ap.add_argument("--project", default=None, help="Projektname (nur bei --mode single)")
     args = ap.parse_args()
 
-    r = import_engine_output(args.engine_file, args.db, area=args.area,
+    engine_file = args.engine_file
+    if not engine_file and args.latest_dir:
+        picked = find_latest_engine_file(args.latest_dir)
+        if not picked:
+            print(json.dumps({"ok": False,
+                              "error": f"Keine nicht-leere Lead-Datei in {args.latest_dir}"},
+                             ensure_ascii=False, indent=2))
+            return 1
+        engine_file = picked
+        print(f"[auto] Neueste Suche erkannt: {picked.name}")
+    if not engine_file:
+        ap.error("Entweder engine_file ODER --latest-dir angeben.")
+
+    r = import_engine_output(engine_file, args.db, area=args.area,
                              mode=args.mode, project=args.project)
     print(json.dumps(asdict(r), ensure_ascii=False, indent=2))
     return 0 if r.ok else 1

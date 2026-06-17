@@ -1,7 +1,7 @@
 @echo off
 echo.
 echo ============================================
-echo   CRM: Engine-Import  hot_leads.json - crm.db
+echo   CRM: Engine-Import  (neueste Suche - crm.db)
 echo ============================================
 echo.
 
@@ -17,14 +17,22 @@ if %errorlevel%==0 (
     echo [Info] Kein Backup noetig - crm.db existiert noch nicht
 )
 
-:: Engine-Ausgabe importieren
-set "ENGINE=C:\Users\micha\Desktop\KundenAgent\b2bbot\output\latest\hot_leads.json"
+:: Engine-Output-Ordner: nimmt automatisch die NEUESTE Suche
+:: (signal_leads.json vor hot_leads.json vor leads.json)
+set "LATEST=C:\Users\micha\Desktop\KundenAgent\b2bbot\output\latest"
 echo.
-echo [Import] %ENGINE%
+echo [Import] Suche neueste Leads in:
+echo          %LATEST%
 echo.
-python engine_connector.py "%ENGINE%" --db crm.db --area "B2B Agenten System" --mode per_industry
+python engine_connector.py --latest-dir "%LATEST%" --db crm.db --area "B2B Agenten System" --mode per_industry
 
 echo.
-echo [Fertig] CRM auf http://localhost:8765 oeffnen und F5 druecken.
+echo ============================================
+echo  Fertig. So siehst du die Leads:
+echo   1) start.bat starten (CRM)
+echo   2) http://localhost:8765 oeffnen
+echo   3) links auf "Leads" - Bereich "B2B Agenten System"
+echo   (oben steht "inserted" = neu dazugekommen)
+echo ============================================
 echo.
 pause
