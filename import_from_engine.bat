@@ -1,8 +1,7 @@
 @echo off
-chcp 65001 > nul
 echo.
 echo ============================================
-echo  CRM: Engine-Import (hot_leads.json → crm.db)
+echo   CRM: Engine-Import  hot_leads.json - crm.db
 echo ============================================
 echo.
 
@@ -15,7 +14,7 @@ copy crm.db "%BACKUP%" > nul 2>&1
 if %errorlevel%==0 (
     echo [Backup] %BACKUP%
 ) else (
-    echo [Info] Kein Backup noetig (crm.db existiert noch nicht)
+    echo [Info] Kein Backup noetig - crm.db existiert noch nicht
 )
 
 :: Engine-Ausgabe importieren
