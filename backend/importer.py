@@ -134,8 +134,13 @@ _NAME_JUNK_WORDS = (
     "beiträge", "beitraege", "impressum", "verantwortlich", "inhalte dieser",
     "alle angaben", "stand:", "zuletzt aktualisiert",
 )
-# Führende Etiketten wie „Name X" / „Firma: X" (kommt aus manchen Scrapes).
-_NAME_LABEL_PREFIX = re.compile(r"^(?:name|firma|company|unternehmen)\s*[:\-]?\s+", re.I)
+# Führende Etiketten wie „Name X" / „Firma: X" / „Herausgeber X" (aus Scrapes).
+_NAME_LABEL_PREFIX = re.compile(r"^(?:name|firma|company|unternehmen|herausgeber)\s*[:\-]?\s+", re.I)
+# Führendes Datum aus gescrapten Fußzeilen ("Dezember 2021 …" vor dem Namen).
+_DATE_PREFIX = re.compile(
+    r"^(?:Januar|Februar|M[äa]rz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)"
+    r"\s+\d{4}\s+", re.I,
+)
 
 # E-Mail-Postfächer, die KEIN echter Outreach-Kontakt sind → werden entfernt
 # (Lead bleibt, nur die falsche Adresse fliegt raus). info@/kontakt@/office@
@@ -169,8 +174,10 @@ def _clean_company_name(v: Any) -> str | None:
     s = _clean(v)
     if not s:
         return None
-    s = _NAME_LABEL_PREFIX.sub("", s).strip()
     s = re.sub(r"\s+", " ", s)
+    s = _NAME_LABEL_PREFIX.sub("", s).strip()
+    s = _DATE_PREFIX.sub("", s).strip()        # führendes "Dezember 2021 …"
+    s = _NAME_LABEL_PREFIX.sub("", s).strip()  # danach evtl. "HERAUSGEBER …"
     low = s.lower()
     looks_like_fragment = len(s.split()) > 6 or any(w in low for w in _NAME_JUNK_WORDS)
     if looks_like_fragment:
@@ -314,6 +321,17 @@ def _industry_raw(raw: dict[str, Any]) -> str:
 
 # Reine Test-/Smoke-Einträge (keine echten Firmen) → werden beim Import verworfen.
 _NOISE_SUBSTRINGS = ("smoke", "dummy", "lorem")
+# Navigations-/Abschnittswörter, die als „Firmenname" gescrapt wurden (keine
+# echte Firma, z.B. „Jobs", „Talents", „Karriere") → ganzer Lead wird verworfen.
+_JUNK_COMPANY_NAMES = {
+    "jobs", "talents", "talent", "karriere", "career", "careers", "kontakt",
+    "contact", "impressum", "datenschutz", "home", "startseite", "login",
+    "anmelden", "news", "blog", "team", "about", "about us", "über uns",
+    "ueber uns", "leistungen", "services", "service", "produkte", "products",
+    "aktuelles", "presse", "press", "downloads", "download", "partner",
+    "referenzen", "faq", "newsletter", "suche", "search", "menu", "menü",
+    "menue", "agb", "cookies", "cookie", "sitemap",
+}
 # Platzhalter ohne echte Branche → landen gesammelt in „Unklassifiziert".
 _UNCLASSIFIED = {"import", "ohne branche", "unbekannt", "unknown", "n/a", "na", "-", ""}
 UNCLASSIFIED_LABEL = "Unklassifiziert"
@@ -330,9 +348,18 @@ def is_test_noise(raw: dict[str, Any]) -> bool:
     return any(p in low for p in _NOISE_SUBSTRINGS)
 
 
+def is_junk_lead(raw: dict[str, Any]) -> bool:
+    """True, wenn der „Firmenname" nur ein Navigations-/Abschnittswort ist
+    (z.B. „Jobs", „Talents") — kein echter Lead, wird beim Import verworfen."""
+    name = _clean_company_name(_first(raw, FIELD_ALIASES["company_name"]))
+    if not name:
+        return False
+    return name.strip().lower() in _JUNK_COMPANY_NAMES
+
+
 def filter_noise(raw_leads: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
-    """Entfernt Test-/Smoke-Leads. Gibt (behaltene, anzahl_verworfen) zurück."""
-    kept = [r for r in raw_leads if not is_test_noise(r)]
+    """Entfernt Test-/Smoke- und Müll-Namen-Leads. Gibt (behaltene, verworfen) zurück."""
+    kept = [r for r in raw_leads if not is_test_noise(r) and not is_junk_lead(r)]
     return kept, len(raw_leads) - len(kept)
 
 

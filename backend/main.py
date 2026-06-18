@@ -350,11 +350,121 @@ def delete_lead(lid: int) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Engine / KundenAgent Status
+# ---------------------------------------------------------------------------
+
+_ENGINE_LATEST = Path(r"C:\Users\micha\Desktop\KundenAgent\b2bbot\output\latest")
+_SIGNAL_FILE = _ENGINE_LATEST / "signal_leads.json"
+
+
+@app.get("/api/search-status", dependencies=[Depends(require_token)])
+def search_status() -> dict[str, Any]:
+    """Zählt wie viele Leads aus signal_leads.json noch nicht im CRM sind."""
+    import datetime
+
+    if not _SIGNAL_FILE.exists() or _SIGNAL_FILE.stat().st_size <= 2:
+        return {"pending": 0, "total_in_file": 0, "file_mtime": None}
+
+    file_mtime = datetime.datetime.fromtimestamp(
+        _SIGNAL_FILE.stat().st_mtime
+    ).strftime("%Y-%m-%d %H:%M")
+
+    try:
+        from backend import importer as _imp
+        _, raw = _imp.parse_bytes(_SIGNAL_FILE.name, _SIGNAL_FILE.read_bytes())
+    except Exception:
+        return {"pending": 0, "total_in_file": 0, "file_mtime": file_mtime, "error": "unlesbar"}
+
+    total_in_file = len(raw)
+
+    if not raw:
+        return {"pending": 0, "total_in_file": 0, "file_mtime": file_mtime}
+
+    keys_in_file = {
+        _imp.normalize_lead(r)["dedup_key"]
+        for r in raw
+        if _imp.normalize_lead(r).get("dedup_key")
+    }
+
+    conn = db.get_conn()
+    try:
+        existing = {
+            r[0]
+            for r in conn.execute(
+                "SELECT dedup_key FROM leads WHERE dedup_key IS NOT NULL"
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    return {
+        "pending": len(keys_in_file - existing),
+        "total_in_file": total_in_file,
+        "file_mtime": file_mtime,
+    }
+
+
+@app.post("/api/import-engine", dependencies=[Depends(require_token)])
+def import_engine() -> dict[str, Any]:
+    """Importiert signal_leads.json direkt aus dem KundenAgent-Output ins CRM.
+
+    Alle Treffer EINER Suche landen in EINEM klar benannten Projekt
+    (z.B. „Signal: Dachdecker · Berlin") im Bereich „KundenAgent" — so sind sie
+    sofort auffindbar und werden nicht über viele Branchen-Projekte verstreut.
+    """
+    if not _SIGNAL_FILE.exists() or _SIGNAL_FILE.stat().st_size <= 2:
+        raise HTTPException(404, "Keine Engine-Datei (signal_leads.json) gefunden")
+
+    data = _SIGNAL_FILE.read_bytes()
+    try:
+        fmt, raw_leads = importer.parse_bytes(_SIGNAL_FILE.name, data)
+    except Exception as e:
+        raise HTTPException(400, f"Datei konnte nicht gelesen werden: {e}")
+
+    # Such-Metadaten aus dem Datei-Kopf → sprechender Projektname.
+    meta: dict[str, Any] = {}
+    try:
+        obj = json.loads(importer._decode(data))
+        if isinstance(obj, dict):
+            meta = obj
+    except Exception:
+        pass
+    zielgruppe = str(meta.get("zielgruppe", "")).strip()
+    region = str(meta.get("region", "")).strip()
+    if zielgruppe:
+        project_name = f"Signal: {zielgruppe}" + (f" · {region}" if region else " · DE")
+    else:
+        project_name = "Signal-Suche"
+
+    raw_leads, dropped_noise = importer.filter_noise(raw_leads)
+    area = "KundenAgent"
+    conn = db.get_conn()
+    try:
+        db.ensure_area(conn, area)
+        pid = _ensure_project(conn, name=project_name, area=area,
+                              source=f"KundenAgent Signal ({fmt})")
+        inserted, skipped = _insert_leads(conn, pid, raw_leads, fmt)
+        conn.commit()
+    finally:
+        conn.close()
+    export.request_snapshot()
+    return {
+        "inserted": inserted,
+        "skipped_duplicates": skipped,
+        "dropped_noise": dropped_noise,
+        "project": project_name,
+        "area": area,
+        "source_file": _SIGNAL_FILE.name,
+    }
+
+
+# ---------------------------------------------------------------------------
 # ClouseAgent-Hook
 # ---------------------------------------------------------------------------
 
 CLOUSE_DIR = Path(r"C:\Users\micha\Desktop\ClouseAgent")
 CLOUSE_CONTEXT_FILE = CLOUSE_DIR / "lead_context.json"
+CLOUSE_SUMMARY_FILE = CLOUSE_DIR / "call_summary.json"
 
 
 @app.post("/api/leads/{lid}/coach", dependencies=[Depends(require_token)])
@@ -394,6 +504,57 @@ def start_coach(lid: int) -> dict[str, Any]:
     )
 
     return {"ok": True, "context_written": str(CLOUSE_CONTEXT_FILE), "lead": context}
+
+
+@app.post("/api/import-call-summary", dependencies=[Depends(require_token)])
+def import_call_summary() -> dict[str, Any]:
+    """Liest call_summary.json von ClouseAgent und schreibt Transcript als Call-Aktivität in die Timeline."""
+    if not CLOUSE_SUMMARY_FILE.exists():
+        raise HTTPException(404, "Keine Call-Zusammenfassung gefunden (call_summary.json)")
+
+    try:
+        data = json.loads(CLOUSE_SUMMARY_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(400, f"call_summary.json unlesbar: {e}")
+
+    lead_id = data.get("lead_id")
+    if not lead_id:
+        raise HTTPException(400, "Kein lead_id in der Zusammenfassung")
+
+    transcript: list[str] = data.get("transcript", [])
+    company = data.get("company", "")
+    written_at = data.get("written_at", db.now_iso())
+
+    content = f"Anruf ({len(transcript)} Turns)"
+    if company:
+        content += f" — {company}"
+    if transcript:
+        content += "\n\n" + "\n".join(transcript)
+
+    conn = db.get_conn()
+    try:
+        exists = conn.execute("SELECT 1 FROM leads WHERE id=?", (lead_id,)).fetchone()
+        if not exists:
+            raise HTTPException(404, f"Lead {lead_id} nicht im CRM gefunden")
+        conn.execute(
+            "INSERT INTO activities (lead_id, type, content, created_at) VALUES (?,?,?,?)",
+            (lead_id, "call", content, db.now_iso()),
+        )
+        conn.execute("UPDATE leads SET updated_at=? WHERE id=?", (db.now_iso(), lead_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Archivieren statt löschen
+    ts = written_at[:19].replace(":", "-").replace("T", "_")
+    archive = CLOUSE_DIR / f"call_summary_{ts}.json"
+    try:
+        CLOUSE_SUMMARY_FILE.rename(archive)
+    except Exception:
+        pass
+
+    export.request_snapshot()
+    return {"ok": True, "lead_id": lead_id, "turns": len(transcript), "archived_as": archive.name}
 
 
 # ---------------------------------------------------------------------------

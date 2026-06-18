@@ -68,6 +68,24 @@ small { font-weight: 400; }
 
 .view { padding: 24px 26px; overflow: auto; flex: 1; }
 
+/* ---------- Engine-Status Banner ---------- */
+.engine-status-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+  color: #fff; border-radius: var(--radius); padding: 14px 20px;
+  margin-bottom: 20px; box-shadow: 0 4px 16px rgba(37,99,235,.35);
+}
+.engine-status-left { display: flex; align-items: center; gap: 14px; }
+.engine-status-count {
+  font-size: 36px; font-weight: 900; line-height: 1;
+  background: rgba(255,255,255,.15); border-radius: 10px; padding: 4px 12px;
+  min-width: 52px; text-align: center;
+}
+.engine-status-text { font-size: 15px; font-weight: 600; line-height: 1.4; }
+.engine-status-meta { display: block; font-size: 11px; font-weight: 400; opacity: .75; margin-top: 2px; }
+.engine-status-banner .btn.primary { background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.4); color: #fff; white-space: nowrap; }
+.engine-status-banner .btn.primary:hover { background: rgba(255,255,255,.3); }
+
 /* ---------- Cards / KPI ---------- */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 22px; }
 .kpi {

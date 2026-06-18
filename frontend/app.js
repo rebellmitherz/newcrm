@@ -133,6 +133,7 @@ async function loadProjectsIntoFilter() {
 }
 
 function navigate(view) {
+  _clearEnginePoller();
   State.view = view;
   document.querySelectorAll(".nav-item").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
   $("#view-title").textContent = { dashboard: "Dashboard", agenda: "Agenda", pipeline: "Pipeline", leads: "Leads", projects: "Projekte", import: "Import" }[view];
@@ -161,13 +162,53 @@ async function refreshDueBadge() {
 }
 
 /* ---------- Dashboard ---------- */
+let _enginePollTimer = null;
+
+function _clearEnginePoller() {
+  if (_enginePollTimer) { clearInterval(_enginePollTimer); _enginePollTimer = null; }
+}
+
+async function _refreshEngineBanner() {
+  const slot = $("#engine-banner-slot");
+  if (!slot) return _clearEnginePoller();
+  const eng = await api("/api/search-status").catch(() => null);
+  if (!eng) return;
+  if (eng.pending > 0) {
+    slot.innerHTML = `
+      <div class="engine-status-banner">
+        <div class="engine-status-left">
+          <span class="engine-status-count">${eng.pending}</span>
+          <span class="engine-status-text">neue Leads aus KundenAgent warten auf Import
+            <small class="engine-status-meta">${eng.total_in_file} gefunden · Stand ${esc(eng.file_mtime || "")}</small>
+          </span>
+        </div>
+        <button class="btn primary sm" id="engine-import-btn">Jetzt importieren</button>
+      </div>`;
+    const btn = slot.querySelector("#engine-import-btn");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true; btn.textContent = "Importiere…";
+      try {
+        const r = await api("/api/import-engine", { method: "POST" });
+        toast(`✅ ${r.inserted} Leads → „${r.project}" (${r.skipped_duplicates} Dubletten, ${r.dropped_noise} Müll verworfen)`);
+        renderDashboard();
+      } catch (err) {
+        toast(err.message, true);
+        btn.disabled = false; btn.textContent = "Jetzt importieren";
+      }
+    });
+  } else {
+    slot.innerHTML = "";
+  }
+}
+
 async function renderDashboard() {
   const view = $("#view");
   view.innerHTML = '<div class="empty">Lade…</div>';
+  _clearEnginePoller();
   const s = await api("/api/stats" + statsQuery());
   const maxStage = Math.max(1, ...State.stages.map((st) => s.by_stage[st.key] || 0));
 
-  view.innerHTML = `
+  view.innerHTML = `<div id="engine-banner-slot"></div>` + `
     <div class="kpi-grid">
       <div class="kpi primary"><div class="label">Leads gesamt</div><div class="value">${s.total}</div><div class="sub">im gewählten Bereich</div></div>
       <div class="kpi ${s.overdue ? "danger" : ""}" data-go-agenda style="cursor:pointer"><div class="label">Überfällig</div><div class="value">${s.overdue || 0}</div><div class="sub">Wiedervorlage offen →</div></div>
@@ -206,6 +247,8 @@ async function renderDashboard() {
     </div>`;
 
   view.querySelectorAll("[data-go-agenda]").forEach((k) => k.addEventListener("click", () => navigate("agenda")));
+  _refreshEngineBanner();
+  _enginePollTimer = setInterval(_refreshEngineBanner, 30_000);
   $("#dash-backup").addEventListener("click", async (e) => {
     e.target.disabled = true; e.target.textContent = "Sichere…";
     try { const r = await api("/api/backup", { method: "POST" }); toast(`💾 Backup: ${r.file} (${r.size_mb} MB)`); }
@@ -700,6 +743,7 @@ async function openLead(id) {
         <h2>${esc(lead.company_name) || "Lead"}</h2>
         <div class="row" style="gap:6px">
           <button class="btn sm" id="lead-coach">📞 Coach</button>
+          <button class="btn sm" id="lead-call-import">📋 Call einlesen</button>
           <button class="btn sm" id="lead-edit">✏️ Bearbeiten</button>
         </div>
       </div>
@@ -776,6 +820,19 @@ async function openLead(id) {
       toast("Fehler: " + e.message, true);
     } finally {
       btn.disabled = false;
+    }
+  });
+
+  $("#lead-call-import").addEventListener("click", async () => {
+    const btn = $("#lead-call-import");
+    btn.disabled = true; btn.textContent = "⏳ …";
+    try {
+      const r = await api("/api/import-call-summary", { method: "POST" });
+      toast(`✅ Call eingelesen (${r.turns} Turns) — Timeline aktualisiert`);
+      openLead(id);
+    } catch (e) {
+      toast(e.message, true);
+      btn.disabled = false; btn.textContent = "📋 Call einlesen";
     }
   });
 
