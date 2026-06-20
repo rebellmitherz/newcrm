@@ -6,6 +6,7 @@ const State = {
   stages: [],
   areaFilter: "",
   projectFilter: "",
+  leadKind: "all",          // "all" | "normal" | "signal"
   leadSort: "score_desc",
   search: "",
   view: "dashboard",
@@ -439,16 +440,23 @@ async function renderLeads() {
   const leads = await fetchLeads(State.leadSort || "score_desc");
   const sortSel = `<select id="lead-sort">${Object.entries(SORT_LABELS).map(([k, v]) =>
     `<option value="${k}" ${(State.leadSort || "score_desc") === k ? "selected" : ""}>${v}</option>`).join("")}</select>`;
+  const kinds = [["all", "Alle"], ["normal", "Normal"], ["signal", "📡 Signal"]];
+  const kindToggle = `<div class="seg" id="lead-kind">${kinds.map(([k, label]) =>
+    `<button class="seg-btn ${(State.leadKind || "all") === k ? "active" : ""}" data-kind="${k}">${label}</button>`).join("")}</div>`;
+  const bindKindToggle = () => $("#lead-kind").querySelectorAll("[data-kind]").forEach((b) =>
+    b.addEventListener("click", () => { State.leadKind = b.dataset.kind; renderLeads(); }));
 
   if (!leads.length) {
-    view.innerHTML = `<div class="row" style="margin-bottom:14px;justify-content:space-between"><div class="muted">0 Leads</div><div class="row"><span class="muted">Sortieren:</span>${sortSel}</div></div><div class="empty">Keine Leads in dieser Auswahl. Importiere welche über „Import".</div>`;
+    view.innerHTML = `<div class="row" style="margin-bottom:14px;justify-content:space-between"><div class="row" style="gap:12px">${kindToggle}<span class="muted">0 Leads</span></div><div class="row"><span class="muted">Sortieren:</span>${sortSel}</div></div><div class="empty">Keine Leads in dieser Auswahl. Importiere welche über „Import".</div>`;
     $("#lead-sort").addEventListener("change", (e) => { State.leadSort = e.target.value; renderLeads(); });
+    bindKindToggle();
     return;
   }
   view.innerHTML = `
     <div class="row" style="margin-bottom:14px;justify-content:space-between">
-      <div class="muted">${leads.length} Leads</div>
+      <div class="row" style="gap:12px">${kindToggle}<span class="muted">${leads.length} Leads</span></div>
       <div class="row"><span class="muted">Sortieren:</span>${sortSel}
+        <button class="btn sm" id="lead-delivery">📦 Als Lieferung</button>
         <button class="btn sm" id="lead-csv">⬇️ CSV</button></div>
     </div>
     <div class="table-wrap"><table>
@@ -458,7 +466,7 @@ async function renderLeads() {
       <tbody>
         ${leads.map((l) => `
           <tr data-id="${l.id}">
-            <td><strong>${esc(l.company_name) || "—"}</strong></td>
+            <td><strong>${esc(l.company_name) || "—"}</strong>${l.is_signal ? ' <span class="badge sig" title="Signal-Lead">📡</span>' : ""}</td>
             <td>${esc(l.contact_name) || ""}${l.role ? `<br><span class="muted">${esc(l.role)}</span>` : ""}</td>
             <td>${esc(l.email) || ""}</td>
             <td>${esc(l.phone) || ""}</td>
@@ -474,6 +482,51 @@ async function renderLeads() {
   view.querySelectorAll("tbody tr").forEach((tr) => tr.addEventListener("click", () => openLead(tr.dataset.id)));
   $("#lead-sort").addEventListener("change", (e) => { State.leadSort = e.target.value; renderLeads(); });
   $("#lead-csv").addEventListener("click", () => exportCsv(leads));
+  $("#lead-delivery").addEventListener("click", () => createDelivery(leads));
+  bindKindToggle();
+}
+
+/* ---------- Lieferungen (Lead-Bündel als Kunden-Link) ---------- */
+async function createDelivery(leads) {
+  const ids = (leads || []).map((l) => l.id).filter(Boolean);
+  if (!ids.length) { toast("Keine Leads in der Auswahl", true); return; }
+  const title = prompt(`Lieferung für ${ids.length} Leads — Titel (sieht der Kunde):`, "Qualifizierte Signal-Leads");
+  if (title === null) return;
+  const customer = prompt("Kundenname (optional):", "") || "";
+  try {
+    const res = await api("/api/deliveries", {
+      method: "POST",
+      json: { title: (title.trim() || "Leads-Lieferung"), customer: customer.trim(), lead_ids: ids },
+    });
+    showDeliveryLink(location.origin + res.url, res.count);
+  } catch (e) {
+    toast("Fehler: " + e.message, true);
+  }
+}
+
+function showDeliveryLink(url, count) {
+  const overlay = el(`<div style="position:fixed;inset:0;background:rgba(8,12,20,.66);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px">
+    <div style="background:var(--panel,#161d2e);max-width:520px;width:100%;border:1px solid var(--border,#26304a);border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.45)">
+      <h3 style="margin:0 0 6px">📦 Lieferung erstellt</h3>
+      <p class="muted" style="margin:0 0 14px">${count} Leads · diesen Link mit dem Kunden teilen (kein Login nötig):</p>
+      <input readonly value="${esc(url)}" style="width:100%;padding:11px 12px;border:1px solid var(--border,#26304a);border-radius:9px;font-size:13px;background:var(--bg,#0b0f17);color:inherit" />
+      <div class="row" style="justify-content:flex-end;gap:8px;margin-top:16px">
+        <button class="btn" data-act="open">Öffnen ↗</button>
+        <button class="btn primary" data-act="copy">Link kopieren</button>
+        <button class="btn" data-act="close">Schließen</button>
+      </div>
+    </div></div>`);
+  const inp = overlay.querySelector("input");
+  const close = () => overlay.remove();
+  overlay.querySelector('[data-act="copy"]').addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(url); toast("Link kopiert"); }
+    catch (_) { inp.select(); try { document.execCommand("copy"); toast("Link kopiert"); } catch (e2) {} }
+  });
+  overlay.querySelector('[data-act="open"]').addEventListener("click", () => window.open(url, "_blank", "noopener"));
+  overlay.querySelector('[data-act="close"]').addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+  inp.focus(); inp.select();
 }
 
 function leadDate(l) {
@@ -499,6 +552,7 @@ async function fetchLeads(sort) {
   if (State.projectFilter) p.set("project_id", State.projectFilter);
   else if (State.areaFilter) p.set("area", State.areaFilter);
   if (State.search) p.set("q", State.search);
+  if (State.leadKind && State.leadKind !== "all") p.set("kind", State.leadKind);
   if (sort) p.set("sort", sort);
   return api("/api/leads?" + p.toString());
 }

@@ -96,10 +96,30 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
 
+            -- Lieferungen: ein benanntes Lead-Bündel für EINEN Kunden, abrufbar
+            -- über einen geheimen Token (Public-Liefer-Link, kein Login). Das ist
+            -- die Verkaufs-/Auslieferungs-Schicht des 1k-Produkts.
+            CREATE TABLE IF NOT EXISTS deliveries (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                token      TEXT NOT NULL UNIQUE,
+                title      TEXT NOT NULL,
+                customer   TEXT,
+                note       TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS delivery_leads (
+                delivery_id INTEGER NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
+                lead_id     INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+                position    INTEGER,
+                PRIMARY KEY (delivery_id, lead_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_leads_project ON leads(project_id);
             CREATE INDEX IF NOT EXISTS idx_leads_stage   ON leads(stage);
             CREATE INDEX IF NOT EXISTS idx_leads_dedup   ON leads(dedup_key);
             CREATE INDEX IF NOT EXISTS idx_act_lead      ON activities(lead_id);
+            CREATE INDEX IF NOT EXISTS idx_delivery_leads_del ON delivery_leads(delivery_id);
             """
         )
         # Migration: 'area'-Spalte nachrüsten, falls eine ältere DB existiert

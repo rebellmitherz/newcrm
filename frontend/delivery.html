@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Ihre Leads · Rebellsystem</title>
+<style>
+  :root{
+    --bg:#0b0f17; --bg2:#121826; --card:#161d2e; --card2:#1b2436;
+    --line:#26304a; --txt:#e7ecf5; --mut:#8b97b0; --acc:#6ea8fe; --acc2:#3b82f6;
+    --hoch:#34d399; --hoch-bg:rgba(52,211,153,.13);
+    --mittel:#fbbf24; --mittel-bg:rgba(251,191,36,.13);
+    --niedrig:#94a3b8; --niedrig-bg:rgba(148,163,184,.12);
+    --radius:16px; --shadow:0 8px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:radial-gradient(1200px 700px at 80% -10%, #16213a 0%, var(--bg) 55%);
+    color:var(--txt); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px; margin:0 auto; padding:32px 20px 64px}
+  .top{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:8px}
+  .brand{display:flex; align-items:center; gap:9px; color:var(--mut); font-weight:600; letter-spacing:.04em; font-size:13px; text-transform:uppercase}
+  .brand .mk{color:var(--acc); font-size:18px}
+  h1{margin:.35em 0 .1em; font-size:26px; letter-spacing:-.01em}
+  .sub{color:var(--mut); margin:0}
+  .pill{display:inline-flex; align-items:center; gap:7px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:7px 14px; font-size:13px; color:var(--txt)}
+  .bar{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:22px 0 18px}
+  .bar .grow{flex:1}
+  select,.btn{
+    background:var(--card); color:var(--txt); border:1px solid var(--line);
+    border-radius:10px; padding:9px 13px; font-size:14px; cursor:pointer;
+  }
+  .btn-acc{background:linear-gradient(180deg,var(--acc),var(--acc2)); border-color:transparent; color:#06122b; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:8px}
+  .btn-acc:hover{filter:brightness(1.05)}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:16px}
+  .card{
+    background:linear-gradient(180deg,var(--card),var(--card2)); border:1px solid var(--line);
+    border-radius:var(--radius); padding:18px 18px 16px; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; gap:12px; position:relative; overflow:hidden;
+  }
+  .card::before{content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--niedrig)}
+  .card.hoch::before{background:var(--hoch)} .card.mittel::before{background:var(--mittel)}
+  .chead{display:flex; align-items:flex-start; justify-content:space-between; gap:12px}
+  .firma{font-size:17px; font-weight:700; letter-spacing:-.01em; margin:0}
+  .ort{color:var(--mut); font-size:13px; margin:2px 0 0}
+  .badge{flex:none; text-align:center; border-radius:12px; padding:8px 11px; min-width:78px; border:1px solid transparent}
+  .badge .lvl{font-weight:800; font-size:12px; letter-spacing:.05em; text-transform:uppercase}
+  .badge .sc{font-size:20px; font-weight:800; line-height:1.1}
+  .badge .cap{font-size:10px; color:var(--mut); letter-spacing:.04em; text-transform:uppercase}
+  .badge.hoch{background:var(--hoch-bg); border-color:var(--hoch)} .badge.hoch .lvl{color:var(--hoch)}
+  .badge.mittel{background:var(--mittel-bg); border-color:var(--mittel)} .badge.mittel .lvl{color:var(--mittel)}
+  .badge.niedrig{background:var(--niedrig-bg); border-color:var(--niedrig)} .badge.niedrig .lvl{color:var(--niedrig)}
+  .signal{display:inline-flex; align-items:center; gap:7px; align-self:flex-start; background:rgba(110,168,254,.12); border:1px solid rgba(110,168,254,.35); color:var(--acc); border-radius:999px; padding:5px 11px; font-size:12.5px; font-weight:600}
+  .why{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:5px}
+  .why li{color:var(--txt); font-size:13px; padding-left:18px; position:relative}
+  .why li::before{content:"✓"; position:absolute; left:0; color:var(--hoch); font-weight:800}
+  .contact{display:flex; flex-direction:column; gap:6px; border-top:1px solid var(--line); padding-top:12px; margin-top:2px}
+  .contact a,.contact span{color:var(--txt); text-decoration:none; font-size:13.5px; display:flex; align-items:center; gap:8px; word-break:break-all}
+  .contact a:hover{color:var(--acc)}
+  .contact .ic{width:16px; text-align:center; color:var(--mut); flex:none}
+  .beleg{font-size:12px}
+  .beleg a{color:var(--acc)}
+  .empty,.err{text-align:center; color:var(--mut); padding:64px 20px}
+  .err{color:#fca5a5}
+  .foot{margin-top:40px; text-align:center; color:var(--mut); font-size:12.5px}
+  .skel{height:190px; border-radius:var(--radius); background:linear-gradient(100deg,var(--card) 30%,var(--card2) 50%,var(--card) 70%); background-size:200% 100%; animation:sh 1.3s infinite}
+  @keyframes sh{to{background-position:-200% 0}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="brand"><span class="mk">▰</span> Rebellsystem</div>
+        <h1 id="title">Ihre Leads</h1>
+        <p class="sub" id="sub">Qualifizierte Signal-Leads mit Kaufbereitschafts-Analyse</p>
+      </div>
+      <div class="pill" id="meta">…</div>
+    </div>
+
+    <div class="bar">
+      <select id="filter">
+        <option value="">Alle Kaufbereitschaften</option>
+        <option value="hoch">Nur hoch</option>
+        <option value="mittel">hoch + mittel</option>
+      </select>
+      <select id="sort">
+        <option value="score">Sortierung: Kaufbereitschaft</option>
+        <option value="firma">Sortierung: Firma A–Z</option>
+      </select>
+      <span class="grow"></span>
+      <a class="btn-acc" id="csv" href="#">⬇ Als CSV exportieren</a>
+    </div>
+
+    <div class="grid" id="grid">
+      <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+    </div>
+
+    <div class="foot">Geliefert über <b>Rebellsystem</b> · Kaufbereitschaft = Kaufsignal × Passung × Erreichbarkeit</div>
+  </div>
+
+<script>
+const TOKEN = location.pathname.split("/").filter(Boolean)[1] || "";
+const grid = document.getElementById("grid");
+let LEADS = [];
+
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+const RANK = {hoch:3, mittel:2, niedrig:1};
+
+function card(l){
+  const stufe = (l.kaufbereitschaft_stufe||"niedrig").toLowerCase();
+  const contact = [];
+  if(l.email)   contact.push(`<a href="mailto:${esc(l.email)}"><span class="ic">✉</span>${esc(l.email)}</a>`);
+  if(l.telefon) contact.push(`<a href="tel:${esc(l.telefon.replace(/\s/g,''))}"><span class="ic">☎</span>${esc(l.telefon)}</a>`);
+  if(l.website) contact.push(`<a href="${esc(l.website)}" target="_blank" rel="noopener"><span class="ic">🌐</span>${esc(l.website.replace(/^https?:\/\//,''))}</a>`);
+  if(l.ansprechpartner) contact.unshift(`<span><span class="ic">👤</span>${esc(l.ansprechpartner)}</span>`);
+  const why = (l.kaufbereitschaft_gruende||[]).map(g=>`<li>${esc(g)}</li>`).join("");
+  const beleg = l.beleg_url ? `<div class="beleg">Beleg: <a href="${esc(l.beleg_url)}" target="_blank" rel="noopener">Stellenanzeige ansehen ↗</a></div>` : "";
+  const sig = l.signal_label ? `<span class="signal">📡 ${esc(l.signal_label)}</span>` : "";
+  return `<div class="card ${stufe}">
+    <div class="chead">
+      <div><p class="firma">${esc(l.firma||"—")}</p>${l.ort?`<p class="ort">${esc(l.ort)}</p>`:""}</div>
+      <div class="badge ${stufe}"><div class="lvl">${esc(stufe)}</div><div class="sc">${esc(l.kaufbereitschaft_score)}</div><div class="cap">Score</div></div>
+    </div>
+    ${sig}
+    ${why?`<ul class="why">${why}</ul>`:""}
+    ${beleg}
+    ${contact.length?`<div class="contact">${contact.join("")}</div>`:""}
+  </div>`;
+}
+
+function render(){
+  const f = document.getElementById("filter").value;
+  const s = document.getElementById("sort").value;
+  let list = LEADS.slice();
+  if(f==="hoch")   list = list.filter(l=>(l.kaufbereitschaft_stufe||"")==="hoch");
+  if(f==="mittel") list = list.filter(l=>["hoch","mittel"].includes(l.kaufbereitschaft_stufe||""));
+  if(s==="firma")  list.sort((a,b)=>(a.firma||"").localeCompare(b.firma||""));
+  else             list.sort((a,b)=>(b.kaufbereitschaft_score-a.kaufbereitschaft_score)||(RANK[b.kaufbereitschaft_stufe]||0)-(RANK[a.kaufbereitschaft_stufe]||0));
+  grid.innerHTML = list.length ? list.map(card).join("") : `<div class="empty">Keine Leads in dieser Auswahl.</div>`;
+}
+
+async function load(){
+  if(!TOKEN){ grid.innerHTML = `<div class="err">Ungültiger Link.</div>`; return; }
+  document.getElementById("csv").href = `/d/${TOKEN}/export.csv`;
+  try{
+    const r = await fetch(`/api/public/delivery/${encodeURIComponent(TOKEN)}`);
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    LEADS = d.leads||[];
+    document.getElementById("title").textContent = d.title || "Ihre Leads";
+    if(d.customer) document.getElementById("sub").textContent = `Für ${d.customer} · qualifizierte Signal-Leads mit Kaufbereitschafts-Analyse`;
+    const hoch = LEADS.filter(l=>l.kaufbereitschaft_stufe==="hoch").length;
+    document.getElementById("meta").innerHTML = `<b>${d.count}</b>&nbsp;Leads&nbsp;·&nbsp;<span style="color:var(--hoch)">${hoch} hoch</span>`;
+    render();
+  }catch(e){
+    grid.innerHTML = `<div class="err">Diese Lieferung wurde nicht gefunden oder ist nicht mehr verfügbar.</div>`;
+    document.getElementById("meta").textContent = "—";
+  }
+}
+document.getElementById("filter").onchange = render;
+document.getElementById("sort").onchange = render;
+load();
+</script>
+</body>
+</html>

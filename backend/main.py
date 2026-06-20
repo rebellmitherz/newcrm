@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db, importer, export
+from . import deliveries as dlv
 
 FRONTEND_DIR = os.path.join(db.BASE_DIR, "frontend")
 CRM_TOKEN = os.environ.get("CRM_TOKEN", "").strip()
@@ -192,6 +193,7 @@ def list_leads(
     q: Optional[str] = None,
     grade: Optional[str] = None,
     due: Optional[str] = None,   # "overdue" | "today" | "week" | "none" | "any"
+    kind: Optional[str] = None,  # "signal" | "normal" | None/"all"
     sort: str = "score_desc",
 ) -> list[dict[str, Any]]:
     where = []
@@ -202,6 +204,10 @@ def list_leads(
     if area:
         where.append("project_id IN (SELECT id FROM projects WHERE area = ?)")
         params.append(area)
+    if kind == "signal":
+        where.append("project_id IN (SELECT id FROM projects WHERE source LIKE '%Signal%')")
+    elif kind == "normal":
+        where.append("project_id NOT IN (SELECT id FROM projects WHERE source LIKE '%Signal%')")
     if stage:
         where.append("stage = ?")
         params.append(stage)
@@ -239,8 +245,17 @@ def list_leads(
     sql += f" ORDER BY {order}, company_name LIMIT 5000"
     conn = db.get_conn()
     try:
+        sig_pids = {
+            r["id"] for r in
+            conn.execute("SELECT id FROM projects WHERE source LIKE '%Signal%'").fetchall()
+        }
         rows = conn.execute(sql, params).fetchall()
-        return [_lead_public(db.dict_from_row(r)) for r in rows]
+        out = []
+        for r in rows:
+            d = db.dict_from_row(r)
+            d["is_signal"] = d.get("project_id") in sig_pids
+            out.append(_lead_public(d))
+        return out
     finally:
         conn.close()
 
@@ -347,6 +362,61 @@ def delete_lead(lid: int) -> dict[str, Any]:
         conn.close()
     export.request_snapshot()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Versand-Schutz: Leads als „kontaktiert" markieren (Hermes ruft das nach Mail-Versand)
+# ---------------------------------------------------------------------------
+
+class MarkContactedIn(BaseModel):
+    lead_ids: list[int]
+    postfach: str                       # welches Absender-Postfach gesendet hat
+    label: Optional[str] = "Mail 1"     # was gesendet wurde
+
+
+@app.post("/api/leads/mark-contacted", dependencies=[Depends(require_token)])
+def mark_contacted(body: MarkContactedIn) -> dict[str, Any]:
+    """Setzt gesendete Leads auf 'contacted' + Versand-Notiz.
+
+    **Idempotent / Doppel-Send-Schutz:** Nur Leads, die noch auf 'new' stehen, werden
+    markiert. Ein Lead, der bereits 'contacted' (oder weiter) ist, wird übersprungen –
+    so kann derselbe kalte Lead nie ein zweites Mal angeschrieben werden. Hermes ruft das
+    direkt nach erfolgreichem Versand auf und überträgt die gesendeten lead_ids + Postfach.
+    """
+    postfach = (body.postfach or "").strip()
+    if not postfach:
+        raise HTTPException(400, "postfach (Absender) muss angegeben werden")
+    if not body.lead_ids:
+        raise HTTPException(400, "Keine lead_ids übergeben")
+    label = (body.label or "Mail 1").strip() or "Mail 1"
+    stamp = db.now_iso()
+    marked: list[int] = []
+    skipped: list[dict[str, Any]] = []
+    conn = db.get_conn()
+    try:
+        for lid in body.lead_ids:
+            row = conn.execute("SELECT stage FROM leads WHERE id=?", (lid,)).fetchone()
+            if not row:
+                skipped.append({"id": lid, "grund": "nicht gefunden"})
+                continue
+            if row["stage"] != "new":
+                # schon kontaktiert/weiter → nicht erneut anfassen (Doppel-Send-Schutz)
+                skipped.append({"id": lid, "grund": f"schon '{row['stage']}'"})
+                continue
+            conn.execute(
+                "UPDATE leads SET stage='contacted', updated_at=? WHERE id=?", (stamp, lid)
+            )
+            conn.execute(
+                "INSERT INTO activities (lead_id, type, content, created_at) VALUES (?,?,?,?)",
+                (lid, "email", f"{label} gesendet · {postfach}", stamp),
+            )
+            marked.append(lid)
+        conn.commit()
+    finally:
+        conn.close()
+    export.request_snapshot()
+    return {"ok": True, "marked": marked, "marked_count": len(marked),
+            "skipped": skipped, "skipped_count": len(skipped)}
 
 
 # ---------------------------------------------------------------------------
@@ -882,6 +952,163 @@ def _sample(n: dict[str, Any]) -> dict[str, Any]:
 def _iso_plus_days(days: int) -> str:
     import datetime
     return (datetime.date.today() + datetime.timedelta(days=days)).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Lieferungen — Lead-Bündel pro Kunde + Public-Liefer-Link (1k-Produkt)
+# ---------------------------------------------------------------------------
+
+class DeliveryIn(BaseModel):
+    title: str
+    customer: Optional[str] = None
+    note: Optional[str] = None
+    lead_ids: list[int]
+
+
+def _delivery_row_public(row: dict, count: int) -> dict[str, Any]:
+    """Lieferungs-Kopf für die interne Liste/Detail (mit Link, ohne Lead-Daten)."""
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "customer": row.get("customer") or "",
+        "note": row.get("note") or "",
+        "token": row["token"],
+        "url": f"/d/{row['token']}",
+        "count": count,
+        "created_at": row["created_at"],
+    }
+
+
+def _delivery_cards(conn, did: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT l.* FROM delivery_leads dl JOIN leads l ON l.id = dl.lead_id "
+        "WHERE dl.delivery_id=? ORDER BY dl.position, l.id",
+        (did,),
+    ).fetchall()
+    return [dlv.build_card(db.dict_from_row(r)) for r in rows]
+
+
+@app.post("/api/deliveries", dependencies=[Depends(require_token)])
+def create_delivery(body: DeliveryIn) -> dict[str, Any]:
+    title = (body.title or "").strip()
+    if not title:
+        raise HTTPException(400, "title fehlt")
+    # Reihenfolge erhalten, Dubletten raus
+    seen: set[int] = set()
+    lead_ids = [i for i in (body.lead_ids or []) if not (i in seen or seen.add(i))]
+    if not lead_ids:
+        raise HTTPException(400, "Keine lead_ids übergeben")
+    token = dlv.gen_token()
+    conn = db.get_conn()
+    try:
+        # nur real existierende Leads verknüpfen
+        ph = ",".join("?" * len(lead_ids))
+        valid = {r["id"] for r in conn.execute(
+            f"SELECT id FROM leads WHERE id IN ({ph})", lead_ids).fetchall()}
+        ordered = [i for i in lead_ids if i in valid]
+        if not ordered:
+            raise HTTPException(404, "Keine der lead_ids existiert")
+        cur = conn.execute(
+            "INSERT INTO deliveries (token, title, customer, note, created_at) VALUES (?,?,?,?,?)",
+            (token, title, (body.customer or None), (body.note or None), db.now_iso()),
+        )
+        did = cur.lastrowid
+        conn.executemany(
+            "INSERT OR IGNORE INTO delivery_leads (delivery_id, lead_id, position) VALUES (?,?,?)",
+            [(did, lid, pos) for pos, lid in enumerate(ordered)],
+        )
+        conn.commit()
+        row = db.dict_from_row(conn.execute("SELECT * FROM deliveries WHERE id=?", (did,)).fetchone())
+    finally:
+        conn.close()
+    return {**_delivery_row_public(row, len(ordered)), "skipped_missing": len(lead_ids) - len(ordered)}
+
+
+@app.get("/api/deliveries", dependencies=[Depends(require_token)])
+def list_deliveries() -> list[dict[str, Any]]:
+    conn = db.get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT d.*, (SELECT COUNT(*) FROM delivery_leads dl WHERE dl.delivery_id=d.id) AS cnt
+               FROM deliveries d ORDER BY d.created_at DESC"""
+        ).fetchall()
+        return [_delivery_row_public(db.dict_from_row(r), r["cnt"]) for r in rows]
+    finally:
+        conn.close()
+
+
+@app.get("/api/deliveries/{did}", dependencies=[Depends(require_token)])
+def get_delivery(did: int) -> dict[str, Any]:
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT * FROM deliveries WHERE id=?", (did,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Lieferung nicht gefunden")
+        cards = _delivery_cards(conn, did)
+        return {**_delivery_row_public(db.dict_from_row(row), len(cards)), "leads": cards}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/deliveries/{did}", dependencies=[Depends(require_token)])
+def delete_delivery(did: int) -> dict[str, Any]:
+    conn = db.get_conn()
+    try:
+        conn.execute("DELETE FROM deliveries WHERE id=?", (did,))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+# --- Public (KEIN Login — der Token IST der Zugang) -------------------------
+
+def _public_delivery(token: str) -> dict[str, Any]:
+    token = (token or "").strip()
+    if not token:
+        raise HTTPException(404, "Lieferung nicht gefunden")
+    conn = db.get_conn()
+    try:
+        row = conn.execute("SELECT * FROM deliveries WHERE token=?", (token,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Lieferung nicht gefunden")
+        d = db.dict_from_row(row)
+        cards = _delivery_cards(conn, d["id"])
+    finally:
+        conn.close()
+    return {
+        "title": d["title"],
+        "customer": d.get("customer") or "",
+        "generated_at": d["created_at"],
+        "count": len(cards),
+        "leads": cards,
+    }
+
+
+@app.get("/api/public/delivery/{token}")
+def public_delivery(token: str) -> dict[str, Any]:
+    """Öffentliche Lieferungs-Daten (read-only, kein Login)."""
+    return _public_delivery(token)
+
+
+@app.get("/d/{token}/export.csv")
+def public_delivery_csv(token: str):
+    from fastapi.responses import Response
+    data = _public_delivery(token)
+    csv_text = dlv.cards_to_csv(data["leads"])
+    fname = "leads_" + (token or "export")[:8] + ".csv"
+    return Response(
+        content="﻿" + csv_text,   # BOM → Excel öffnet UTF-8 korrekt
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.get("/d/{token}")
+def public_delivery_page(token: str) -> FileResponse:
+    """Moderne Kundenseite für den Liefer-Link. Token kommt aus dem Pfad; die
+    Seite holt die Daten selbst über /api/public/delivery/<token>."""
+    return FileResponse(os.path.join(FRONTEND_DIR, "delivery.html"))
 
 
 # ---------------------------------------------------------------------------

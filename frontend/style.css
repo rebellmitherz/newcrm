@@ -133,6 +133,14 @@ small { font-weight: 400; }
 .badge.grade-B, .badge.grade-B-Lead { background: #fff0d6; color: #9a6400; }
 .badge.grade-C, .badge.grade-C-Lead { background: #fde2e2; color: #b42323; }
 .badge.temp-hot { background: #fde2e2; color: #b42323; }
+.badge.sig { background: #ede4ff; color: #6d28d9; }
+
+/* ---------- Segment-Umschalter (Alle / Normal / Signal) ---------- */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--surface); }
+.seg-btn { padding: 6px 14px; font-size: 13px; font-weight: 600; border: 0; background: transparent; color: var(--text-soft); cursor: pointer; border-right: 1px solid var(--border); }
+.seg-btn:last-child { border-right: 0; }
+.seg-btn:hover { background: var(--surface-2); }
+.seg-btn.active { background: var(--primary); color: #fff; }
 
 /* ---------- Tabelle ---------- */
 .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: auto; }
