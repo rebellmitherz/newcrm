@@ -54,6 +54,16 @@ function gradeClass(g) {
   return "grade-" + k;
 }
 
+function fmtImport(ts) {
+  if (!ts) return "—";
+  try {
+    const d = new Date(ts);
+    const date = d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    return `${date} ${time}`;
+  } catch { return "—"; }
+}
+
 /* ---------- Boot ---------- */
 async function boot() {
   try {
@@ -476,7 +486,7 @@ async function renderLeads() {
     </div>
     <div class="table-wrap"><table>
       <thead><tr>
-        <th style="width:32px"></th><th>Firma</th><th>Kontakt</th><th>E-Mail</th><th>Telefon</th><th>Stadt</th><th>Branche</th><th>Wiedervorlage</th><th>Score</th><th>Grade</th><th>Phase</th>
+        <th style="width:32px"></th><th>Firma</th><th>Kontakt</th><th>E-Mail</th><th>Telefon</th><th>Stadt</th><th>Branche</th><th>Wiedervorlage</th><th>Score</th><th>Grade</th><th>Phase</th><th class="muted" style="white-space:nowrap">Importiert</th>
       </tr></thead>
       <tbody>
         ${leads.map((l) => `
@@ -492,6 +502,7 @@ async function renderLeads() {
             <td>${l.score != null ? `<span class="badge score">${Math.round(l.score)}</span>` : ""}</td>
             <td>${l.grade ? `<span class="badge ${gradeClass(l.grade)}">${esc(l.grade)}</span>` : ""}</td>
             <td>${esc(stageLabel(l.stage))}</td>
+            <td class="muted" style="white-space:nowrap;font-size:12px">${fmtImport(l.imported_at || l.created_at)}</td>
           </tr>`).join("")}
       </tbody>
     </table></div>`;
