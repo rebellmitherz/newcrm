@@ -6,6 +6,18 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8765"],
       "port": 8765
+    },
+    {
+      "name": "crm-preview",
+      "runtimeExecutable": "C:/Users/micha/Desktop/crm/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8788"],
+      "port": 8788
+    },
+    {
+      "name": "kundenagent-ui-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8799", "--directory", "C:/Users/micha/Desktop/KundenAgent/product/ui"],
+      "port": 8799
     }
   ]
 }

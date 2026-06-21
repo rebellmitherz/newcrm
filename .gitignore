@@ -21,3 +21,9 @@ share_token.txt
 # Editor / OS
 .DS_Store
 Thumbs.db
+
+# Server-Logs + temporaere Ausgaben
+_server_out.log
+_server_err.log
+_server_start.log
+signal_search_result.json

@@ -137,7 +137,7 @@ function navigate(view) {
   _clearEnginePoller();
   State.view = view;
   document.querySelectorAll(".nav-item").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
-  $("#view-title").textContent = { dashboard: "Dashboard", agenda: "Agenda", pipeline: "Pipeline", leads: "Leads", projects: "Projekte", import: "Import" }[view];
+  $("#view-title").textContent = { dashboard: "Dashboard", agenda: "Agenda", pipeline: "Pipeline", leads: "Leads", deliveries: "Lieferungen", projects: "Projekte", import: "Import" }[view];
   render();
 }
 
@@ -147,6 +147,7 @@ function render() {
   if (v === "agenda") return renderAgenda();
   if (v === "pipeline") return renderPipeline();
   if (v === "leads") return renderLeads();
+  if (v === "deliveries") return renderDeliveries();
   if (v === "projects") return renderProjects();
   if (v === "import") return renderImport();
 }
@@ -452,20 +453,35 @@ async function renderLeads() {
     bindKindToggle();
     return;
   }
+  const dlvs = await api("/api/deliveries").catch(() => []);
+  const dlvOpts = dlvs.length
+    ? '<option value="">— Lieferung wählen —</option>' + dlvs.map((d) =>
+        `<option value="${d.id}">${esc(d.title)}${d.customer ? " · " + esc(d.customer) : ""} (${d.count})</option>`).join("")
+    : '<option value="">— erst unter 📦 Lieferungen anlegen —</option>';
+
   view.innerHTML = `
-    <div class="row" style="margin-bottom:14px;justify-content:space-between">
+    <div class="row" style="margin-bottom:10px;justify-content:space-between">
       <div class="row" style="gap:12px">${kindToggle}<span class="muted">${leads.length} Leads</span></div>
       <div class="row"><span class="muted">Sortieren:</span>${sortSel}
-        <button class="btn sm" id="lead-delivery">📦 Als Lieferung</button>
         <button class="btn sm" id="lead-csv">⬇️ CSV</button></div>
+    </div>
+    <div class="row" id="lead-dlvbar" style="margin-bottom:12px;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel-2,#0f1626);padding:8px 10px;border:1px solid var(--border);border-radius:9px">
+      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="lead-all"> alle</label>
+      <span class="muted" id="lead-selcount">0 ausgewählt</span>
+      <span class="muted">→ in Lieferung:</span>
+      <select id="lead-dlv-sel" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;max-width:280px">${dlvOpts}</select>
+      <button class="btn sm primary" id="lead-add-dlv">＋ hinzufügen</button>
+      <span style="flex:1"></span>
+      <a class="muted" id="lead-go-dlv" style="cursor:pointer">📦 Lieferungen verwalten →</a>
     </div>
     <div class="table-wrap"><table>
       <thead><tr>
-        <th>Firma</th><th>Kontakt</th><th>E-Mail</th><th>Telefon</th><th>Stadt</th><th>Branche</th><th>Wiedervorlage</th><th>Score</th><th>Grade</th><th>Phase</th>
+        <th style="width:32px"></th><th>Firma</th><th>Kontakt</th><th>E-Mail</th><th>Telefon</th><th>Stadt</th><th>Branche</th><th>Wiedervorlage</th><th>Score</th><th>Grade</th><th>Phase</th>
       </tr></thead>
       <tbody>
         ${leads.map((l) => `
           <tr data-id="${l.id}">
+            <td class="lead-checkcell" style="text-align:center"><input type="checkbox" class="lead-check" data-id="${l.id}"></td>
             <td><strong>${esc(l.company_name) || "—"}</strong>${l.is_signal ? ' <span class="badge sig" title="Signal-Lead">📡</span>' : ""}</td>
             <td>${esc(l.contact_name) || ""}${l.role ? `<br><span class="muted">${esc(l.role)}</span>` : ""}</td>
             <td>${esc(l.email) || ""}</td>
@@ -479,54 +495,135 @@ async function renderLeads() {
           </tr>`).join("")}
       </tbody>
     </table></div>`;
-  view.querySelectorAll("tbody tr").forEach((tr) => tr.addEventListener("click", () => openLead(tr.dataset.id)));
+
+  const checks = () => Array.from(view.querySelectorAll(".lead-check"));
+  const selectedIds = () => checks().filter((c) => c.checked).map((c) => Number(c.dataset.id));
+  const updateCount = () => { $("#lead-selcount").textContent = `${selectedIds().length} ausgewählt`; };
+
+  view.querySelectorAll("tbody tr").forEach((tr) => tr.addEventListener("click", (e) => {
+    if (e.target.closest(".lead-checkcell")) return;   // Klick auf die Checkbox öffnet den Lead NICHT
+    openLead(tr.dataset.id);
+  }));
+  checks().forEach((c) => c.addEventListener("change", updateCount));
+  $("#lead-all").addEventListener("change", (e) => { checks().forEach((c) => (c.checked = e.target.checked)); updateCount(); });
+  $("#lead-go-dlv").addEventListener("click", () => navigate("deliveries"));
+  $("#lead-add-dlv").addEventListener("click", async () => {
+    const ids = selectedIds();
+    const did = $("#lead-dlv-sel").value;
+    if (!ids.length) { toast("Erst Leads anhaken", true); return; }
+    if (!did) { toast("Erst eine Lieferung wählen/anlegen (📦 Lieferungen)", true); return; }
+    try {
+      const r = await api(`/api/deliveries/${did}/leads`, { method: "POST", json: { lead_ids: ids } });
+      const label = $("#lead-dlv-sel").selectedOptions[0].textContent.split(" · ")[0].split(" (")[0];
+      toast(`✅ ${r.added} hinzugefügt → „${label}" (jetzt ${r.count})`);
+      checks().forEach((c) => (c.checked = false)); $("#lead-all").checked = false; updateCount();
+      renderLeads();   // Anzahl in der Lieferungs-Auswahl aktualisieren
+    } catch (err) { toast(err.message, true); }
+  });
   $("#lead-sort").addEventListener("change", (e) => { State.leadSort = e.target.value; renderLeads(); });
   $("#lead-csv").addEventListener("click", () => exportCsv(leads));
-  $("#lead-delivery").addEventListener("click", () => createDelivery(leads));
   bindKindToggle();
 }
 
-/* ---------- Lieferungen (Lead-Bündel als Kunden-Link) ---------- */
-async function createDelivery(leads) {
-  const ids = (leads || []).map((l) => l.id).filter(Boolean);
-  if (!ids.length) { toast("Keine Leads in der Auswahl", true); return; }
-  const title = prompt(`Lieferung für ${ids.length} Leads — Titel (sieht der Kunde):`, "Qualifizierte Signal-Leads");
-  if (title === null) return;
-  const customer = prompt("Kundenname (optional):", "") || "";
+/* ---------- Lieferungen (Kundenseiten) ---------- */
+async function renderDeliveries() {
+  const view = $("#view");
+  view.innerHTML = '<div class="empty">Lade…</div>';
+  let list;
   try {
-    const res = await api("/api/deliveries", {
-      method: "POST",
-      json: { title: (title.trim() || "Leads-Lieferung"), customer: customer.trim(), lead_ids: ids },
-    });
-    showDeliveryLink(location.origin + res.url, res.count);
+    list = await api("/api/deliveries");
   } catch (e) {
-    toast("Fehler: " + e.message, true);
+    view.innerHTML = `<div class="empty">Lieferungen konnten nicht geladen werden.<br>
+      <span class="muted">${esc(e.message)} — läuft der CRM-Server schon mit dem neuen Code?<br>
+      Schwarzes CRM-Fenster schließen → <b>start.bat</b> neu starten → im Browser <b>Strg+F5</b>.</span></div>`;
+    return;
   }
+  view.innerHTML = `
+    <div class="panel">
+      <h3>＋ Neue Lieferung (Kundenseite)</h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <input id="dlv-title" placeholder="Titel — sieht der Kunde, z.B. „Vertriebs-Leads Juni“" style="flex:2;min-width:240px;padding:10px 12px;border:1px solid var(--border);border-radius:9px" />
+        <input id="dlv-customer" placeholder="Kundenname (optional)" style="flex:1;min-width:160px;padding:10px 12px;border:1px solid var(--border);border-radius:9px" />
+        <button class="btn primary" id="dlv-create">Anlegen</button>
+      </div>
+      <div class="muted" style="margin-top:8px">Danach unter <b>📇 Leads</b> die gewünschten Leads anhaken → „＋ hinzufügen". Den fertigen Link gibst du dem Kunden — er braucht kein Login.</div>
+    </div>
+    ${list.length ? list.map(deliveryCard).join("") : '<div class="empty">Noch keine Lieferungen. Lege oben deine erste an.</div>'}`;
+  $("#dlv-create").addEventListener("click", async () => {
+    const title = $("#dlv-title").value.trim();
+    if (!title) { toast("Titel fehlt", true); return; }
+    try {
+      await api("/api/deliveries", { method: "POST", json: { title, customer: $("#dlv-customer").value.trim(), lead_ids: [] } });
+      toast("Lieferung angelegt"); renderDeliveries();
+    } catch (e) { toast(e.message, true); }
+  });
+  view.querySelectorAll("[data-dlv]").forEach(bindDeliveryCard);
 }
 
-function showDeliveryLink(url, count) {
-  const overlay = el(`<div style="position:fixed;inset:0;background:rgba(8,12,20,.66);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px">
-    <div style="background:var(--panel,#161d2e);max-width:520px;width:100%;border:1px solid var(--border,#26304a);border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.45)">
-      <h3 style="margin:0 0 6px">📦 Lieferung erstellt</h3>
-      <p class="muted" style="margin:0 0 14px">${count} Leads · diesen Link mit dem Kunden teilen (kein Login nötig):</p>
-      <input readonly value="${esc(url)}" style="width:100%;padding:11px 12px;border:1px solid var(--border,#26304a);border-radius:9px;font-size:13px;background:var(--bg,#0b0f17);color:inherit" />
-      <div class="row" style="justify-content:flex-end;gap:8px;margin-top:16px">
-        <button class="btn" data-act="open">Öffnen ↗</button>
-        <button class="btn primary" data-act="copy">Link kopieren</button>
-        <button class="btn" data-act="close">Schließen</button>
+function deliveryCard(d) {
+  const url = location.origin + d.url;
+  return `<div class="panel" data-dlv="${d.id}">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+      <div><h3 style="margin:0">${esc(d.title)}</h3>
+        <div class="muted">${d.customer ? esc(d.customer) + " · " : ""}<b>${d.count}</b> Leads</div></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button class="btn sm" data-act="open">Öffnen ↗</button>
+        <button class="btn sm primary" data-act="copy">Link kopieren</button>
+        <button class="btn sm" data-act="leads">Leads</button>
+        <button class="btn sm" data-act="del" style="color:#d6455d">Löschen</button>
       </div>
-    </div></div>`);
-  const inp = overlay.querySelector("input");
-  const close = () => overlay.remove();
-  overlay.querySelector('[data-act="copy"]').addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(url); toast("Link kopiert"); }
-    catch (_) { inp.select(); try { document.execCommand("copy"); toast("Link kopiert"); } catch (e2) {} }
+    </div>
+    <input readonly value="${esc(url)}" data-link style="width:100%;margin-top:10px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:12.5px" />
+    <div data-leads hidden style="margin-top:12px"></div>
+  </div>`;
+}
+
+function kbBadge(stufe, score) {
+  const c = stufe === "hoch" ? "#34d399" : stufe === "mittel" ? "#fbbf24" : "#94a3b8";
+  return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;color:#06122b;background:${c}">${esc(stufe)} ${score}</span>`;
+}
+
+function bindDeliveryCard(card) {
+  const id = card.dataset.dlv;
+  const url = card.querySelector("[data-link]").value;
+  card.querySelector('[data-act="open"]').addEventListener("click", () => window.open(url, "_blank", "noopener"));
+  card.querySelector('[data-act="copy"]').addEventListener("click", () => copyText(url));
+  card.querySelector('[data-act="del"]').addEventListener("click", async () => {
+    if (!confirm("Diese Lieferung löschen? Der Kunden-Link wird ungültig.")) return;
+    try { await api(`/api/deliveries/${id}`, { method: "DELETE" }); toast("Gelöscht"); renderDeliveries(); }
+    catch (e) { toast(e.message, true); }
   });
-  overlay.querySelector('[data-act="open"]').addEventListener("click", () => window.open(url, "_blank", "noopener"));
-  overlay.querySelector('[data-act="close"]').addEventListener("click", close);
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
-  document.body.appendChild(overlay);
-  inp.focus(); inp.select();
+  const slot = card.querySelector("[data-leads]");
+  card.querySelector('[data-act="leads"]').addEventListener("click", async () => {
+    if (!slot.hidden) { slot.hidden = true; return; }
+    slot.innerHTML = '<div class="muted">Lade…</div>'; slot.hidden = false;
+    try {
+      const d = await api(`/api/deliveries/${id}`);
+      slot.innerHTML = d.leads.length
+        ? `<div class="table-wrap"><table><tbody>${d.leads.map((l) => `<tr>
+            <td><strong>${esc(l.firma)}</strong></td>
+            <td>${l.kaufbereitschaft_stufe ? kbBadge(l.kaufbereitschaft_stufe, l.kaufbereitschaft_score) : ""}</td>
+            <td>${esc(l.email) || esc(l.telefon) || ""}</td>
+            <td style="text-align:right"><button class="btn sm" data-rm="${l.lead_id || ""}" style="color:#d6455d">entfernen</button></td>
+          </tr>`).join("")}</tbody></table></div>`
+        : '<div class="muted">Noch keine Leads. Unter 📇 Leads anhaken → „＋ hinzufügen".</div>';
+      slot.querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", async () => {
+        const lid = b.dataset.rm; if (!lid) return;
+        try { await api(`/api/deliveries/${id}/leads/${lid}`, { method: "DELETE" }); b.closest("tr").remove(); toast("Entfernt"); }
+        catch (e) { toast(e.message, true); }
+      }));
+    } catch (e) { slot.innerHTML = `<div class="muted">${esc(e.message)}</div>`; }
+  });
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("Link kopiert"); return; }
+  catch (_) {}
+  const t = document.createElement("textarea");
+  t.value = text; t.style.position = "fixed"; t.style.opacity = "0";
+  document.body.appendChild(t); t.select();
+  try { document.execCommand("copy"); toast("Link kopiert"); } catch (e) { toast("Kopieren nicht möglich", true); }
+  t.remove();
 }
 
 function leadDate(l) {

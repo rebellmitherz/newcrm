@@ -979,13 +979,20 @@ def _delivery_row_public(row: dict, count: int) -> dict[str, Any]:
     }
 
 
-def _delivery_cards(conn, did: int) -> list[dict[str, Any]]:
+def _delivery_cards(conn, did: int, *, with_id: bool = False) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT l.* FROM delivery_leads dl JOIN leads l ON l.id = dl.lead_id "
         "WHERE dl.delivery_id=? ORDER BY dl.position, l.id",
         (did,),
     ).fetchall()
-    return [dlv.build_card(db.dict_from_row(r)) for r in rows]
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        rd = db.dict_from_row(r)
+        card = dlv.build_card(rd)
+        if with_id:                       # nur Admin-Detail; NIE im Public-Endpunkt
+            card["lead_id"] = rd.get("id")
+        out.append(card)
+    return out
 
 
 @app.post("/api/deliveries", dependencies=[Depends(require_token)])
@@ -993,30 +1000,29 @@ def create_delivery(body: DeliveryIn) -> dict[str, Any]:
     title = (body.title or "").strip()
     if not title:
         raise HTTPException(400, "title fehlt")
-    # Reihenfolge erhalten, Dubletten raus
+    # Reihenfolge erhalten, Dubletten raus. Leere Lieferung ist erlaubt — Kundenseite
+    # zuerst anlegen, Leads später unter „Leads" anhaken.
     seen: set[int] = set()
     lead_ids = [i for i in (body.lead_ids or []) if not (i in seen or seen.add(i))]
-    if not lead_ids:
-        raise HTTPException(400, "Keine lead_ids übergeben")
     token = dlv.gen_token()
     conn = db.get_conn()
     try:
-        # nur real existierende Leads verknüpfen
-        ph = ",".join("?" * len(lead_ids))
-        valid = {r["id"] for r in conn.execute(
-            f"SELECT id FROM leads WHERE id IN ({ph})", lead_ids).fetchall()}
-        ordered = [i for i in lead_ids if i in valid]
-        if not ordered:
-            raise HTTPException(404, "Keine der lead_ids existiert")
+        ordered: list[int] = []
+        if lead_ids:                      # nur real existierende Leads verknüpfen
+            ph = ",".join("?" * len(lead_ids))
+            valid = {r["id"] for r in conn.execute(
+                f"SELECT id FROM leads WHERE id IN ({ph})", lead_ids).fetchall()}
+            ordered = [i for i in lead_ids if i in valid]
         cur = conn.execute(
             "INSERT INTO deliveries (token, title, customer, note, created_at) VALUES (?,?,?,?,?)",
             (token, title, (body.customer or None), (body.note or None), db.now_iso()),
         )
         did = cur.lastrowid
-        conn.executemany(
-            "INSERT OR IGNORE INTO delivery_leads (delivery_id, lead_id, position) VALUES (?,?,?)",
-            [(did, lid, pos) for pos, lid in enumerate(ordered)],
-        )
+        if ordered:
+            conn.executemany(
+                "INSERT OR IGNORE INTO delivery_leads (delivery_id, lead_id, position) VALUES (?,?,?)",
+                [(did, lid, pos) for pos, lid in enumerate(ordered)],
+            )
         conn.commit()
         row = db.dict_from_row(conn.execute("SELECT * FROM deliveries WHERE id=?", (did,)).fetchone())
     finally:
@@ -1044,10 +1050,60 @@ def get_delivery(did: int) -> dict[str, Any]:
         row = conn.execute("SELECT * FROM deliveries WHERE id=?", (did,)).fetchone()
         if not row:
             raise HTTPException(404, "Lieferung nicht gefunden")
-        cards = _delivery_cards(conn, did)
+        cards = _delivery_cards(conn, did, with_id=True)
         return {**_delivery_row_public(db.dict_from_row(row), len(cards)), "leads": cards}
     finally:
         conn.close()
+
+
+class DeliveryLeadsIn(BaseModel):
+    lead_ids: list[int]
+
+
+@app.post("/api/deliveries/{did}/leads", dependencies=[Depends(require_token)])
+def add_delivery_leads(did: int, body: DeliveryLeadsIn) -> dict[str, Any]:
+    """Hängt Leads an eine bestehende Lieferung an (idempotent). Reihenfolge:
+    neue Leads kommen hinten dran."""
+    seen: set[int] = set()
+    lead_ids = [i for i in (body.lead_ids or []) if not (i in seen or seen.add(i))]
+    if not lead_ids:
+        raise HTTPException(400, "Keine lead_ids übergeben")
+    conn = db.get_conn()
+    try:
+        if not conn.execute("SELECT 1 FROM deliveries WHERE id=?", (did,)).fetchone():
+            raise HTTPException(404, "Lieferung nicht gefunden")
+        ph = ",".join("?" * len(lead_ids))
+        valid = {r["id"] for r in conn.execute(
+            f"SELECT id FROM leads WHERE id IN ({ph})", lead_ids).fetchall()}
+        ordered = [i for i in lead_ids if i in valid]
+        before = conn.execute(
+            "SELECT COUNT(*) c FROM delivery_leads WHERE delivery_id=?", (did,)).fetchone()["c"]
+        start = (conn.execute(
+            "SELECT COALESCE(MAX(position),-1) m FROM delivery_leads WHERE delivery_id=?",
+            (did,)).fetchone()["m"]) + 1
+        conn.executemany(
+            "INSERT OR IGNORE INTO delivery_leads (delivery_id, lead_id, position) VALUES (?,?,?)",
+            [(did, lid, start + idx) for idx, lid in enumerate(ordered)],
+        )
+        conn.commit()
+        after = conn.execute(
+            "SELECT COUNT(*) c FROM delivery_leads WHERE delivery_id=?", (did,)).fetchone()["c"]
+    finally:
+        conn.close()
+    return {"ok": True, "added": after - before, "count": after}
+
+
+@app.delete("/api/deliveries/{did}/leads/{lid}", dependencies=[Depends(require_token)])
+def remove_delivery_lead(did: int, lid: int) -> dict[str, Any]:
+    conn = db.get_conn()
+    try:
+        conn.execute("DELETE FROM delivery_leads WHERE delivery_id=? AND lead_id=?", (did, lid))
+        conn.commit()
+        after = conn.execute(
+            "SELECT COUNT(*) c FROM delivery_leads WHERE delivery_id=?", (did,)).fetchone()["c"]
+    finally:
+        conn.close()
+    return {"ok": True, "count": after}
 
 
 @app.delete("/api/deliveries/{did}", dependencies=[Depends(require_token)])
