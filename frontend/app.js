@@ -572,7 +572,12 @@ async function renderDeliveries() {
 }
 
 function deliveryCard(d) {
-  const url = location.origin + d.url;
+  // Öffentlicher Link (feste ngrok-Domain) bevorzugt — den kann der Kunde öffnen,
+  // auch wenn das Admin-CRM über localhost läuft. Sonst Fallback location.origin.
+  const url = d.public_url || (location.origin + d.url);
+  const hinweis = d.public_url
+    ? '<span class="muted" style="font-size:11px">🌐 öffentlicher Link — direkt sendbar</span>'
+    : '<span style="font-size:11px;color:#fbbf24">⚠ lokaler Link — Kunde kann ihn nicht öffnen. CRM per <b>start_crm_ngrok.bat</b> starten.</span>';
   return `<div class="panel" data-dlv="${d.id}">
     <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
       <div><h3 style="margin:0">${esc(d.title)}</h3>
@@ -585,6 +590,7 @@ function deliveryCard(d) {
       </div>
     </div>
     <input readonly value="${esc(url)}" data-link style="width:100%;margin-top:10px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:12.5px" />
+    <div style="margin-top:5px">${hinweis}</div>
     <div data-leads hidden style="margin-top:12px"></div>
   </div>`;
 }

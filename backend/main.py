@@ -965,15 +965,33 @@ class DeliveryIn(BaseModel):
     lead_ids: list[int]
 
 
+def _public_base() -> str:
+    """Öffentliche Basis-URL (feste ngrok-Domain) für TEILBARE Liefer-Links.
+
+    Liest ``ngrok_domain.txt`` im CRM-Ordner. So gibt „Link kopieren" immer einen
+    Link, den der Kunde öffnen kann — auch wenn Emilio das Admin-CRM über
+    127.0.0.1 bedient. Leer = nicht eingerichtet → Frontend nutzt location.origin."""
+    try:
+        dom = (Path(db.BASE_DIR) / "ngrok_domain.txt").read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+    dom = dom.replace("https://", "").replace("http://", "").strip().strip("/")
+    return f"https://{dom}" if dom else ""
+
+
 def _delivery_row_public(row: dict, count: int) -> dict[str, Any]:
     """Lieferungs-Kopf für die interne Liste/Detail (mit Link, ohne Lead-Daten)."""
+    base = _public_base()
+    token = row["token"]
     return {
         "id": row["id"],
         "title": row["title"],
         "customer": row.get("customer") or "",
         "note": row.get("note") or "",
-        "token": row["token"],
-        "url": f"/d/{row['token']}",
+        "token": token,
+        "url": f"/d/{token}",
+        # Fertiger öffentlicher Link (leer wenn keine ngrok-Domain hinterlegt).
+        "public_url": f"{base}/d/{token}" if base else "",
         "count": count,
         "created_at": row["created_at"],
     }
