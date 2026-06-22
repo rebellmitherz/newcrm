@@ -68,11 +68,55 @@ def test_build_card_mappt_und_strippt():
         assert verboten not in c
 
 
+def test_frische_text_label():
+    assert d._frische_text(0) == "heute"
+    assert d._frische_text(3) == "vor 3 Tagen"
+    assert d._frische_text(45) == "vor 1 Monat"
+    assert d._frische_text(None) == ""
+
+
+def test_build_card_zeigt_frische():
+    raw = {"entdeckt_per_signal": "sales_hiring", "signal_alter_tage": 3,
+           "signal_frische_text": "vor 3 Tagen", "kaufbereitschaft_score": 80,
+           "kaufbereitschaft_stufe": "hoch"}
+    c = d.build_card({"company_name": "Z", "raw_json": json.dumps(raw)})
+    assert c["signal_alter_tage"] == 3
+    assert c["signal_frische"] == "vor 3 Tagen"
+
+
+def test_build_card_frische_fallback_aus_alter():
+    # Nur Alter da, kein vorgefertigtes Label → build_card leitet es selbst ab.
+    raw = {"entdeckt_per_signal": "sales_hiring", "signal_alter_tage": 120,
+           "kaufbereitschaft_score": 60, "kaufbereitschaft_stufe": "mittel"}
+    c = d.build_card({"company_name": "Z", "raw_json": json.dumps(raw)})
+    assert c["signal_alter_tage"] == 120
+    assert c["signal_frische"] == "vor 4 Monaten"
+
+
+def test_build_card_zeigt_signal_stapelung():
+    raw = {"entdeckt_per_signal": "appointment_setter",
+           "signale": ["appointment_setter", "sales_hiring"],
+           "signal_count": 2, "kaufbereitschaft_score": 92, "kaufbereitschaft_stufe": "hoch"}
+    c = d.build_card({"company_name": "Heiss GmbH", "raw_json": json.dumps(raw)})
+    assert c["signal_count"] == 2
+    assert c["signale_labels"] == ["Sucht Terminierer / SDR (Outbound)", "Stellt Vertrieb ein"]
+    assert "+" in c["signale_text"]
+
+
+def test_build_card_einzelsignal_count_eins():
+    raw = {"entdeckt_per_signal": "sales_hiring", "kaufbereitschaft_score": 70,
+           "kaufbereitschaft_stufe": "hoch"}
+    c = d.build_card({"company_name": "Solo GmbH", "raw_json": json.dumps(raw)})
+    assert c["signal_count"] == 1
+    assert c["signale_text"] == "Stellt Vertrieb ein"
+
+
 def test_build_card_defensiv_ohne_raw():
     c = d.build_card({"company_name": "Y", "raw_json": "kein json{"})
     assert c["firma"] == "Y"
     assert 0 <= c["kaufbereitschaft_score"] <= 100
     assert c["signal_label"] == ""   # kein Signal → leer
+    assert c["signal_count"] == 0
 
 
 def test_cards_to_csv():

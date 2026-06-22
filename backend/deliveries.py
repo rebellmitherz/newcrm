@@ -123,6 +123,30 @@ def readiness_view(raw: dict, *, email: str = "", phone: str = "") -> dict:
     return _fallback_readiness(raw, email, phone)
 
 
+def _frische_text(tage: Any) -> str:
+    """Kundenlesbares Frische-Label aus dem Anzeigenalter (Tage). '' wenn unbekannt.
+
+    Eigenständige Mini-Variante (CRM-Repo hängt nicht an der KundenAgent-Engine).
+    Bevorzugt wird ohnehin das von der Engine mitgelieferte `signal_frische_text`."""
+    if not isinstance(tage, int):
+        return ""
+    if tage <= 0:
+        return "heute"
+    if tage == 1:
+        return "gestern"
+    if tage < 7:
+        return f"vor {tage} Tagen"
+    if tage < 14:
+        return "vor 1 Woche"
+    if tage < 31:
+        return f"vor {tage // 7} Wochen"
+    if tage < 61:
+        return "vor 1 Monat"
+    if tage < 365:
+        return f"vor {max(1, tage // 30)} Monaten"
+    return "über 1 Jahr"
+
+
 def _parse_raw(raw_json: Any) -> dict:
     if isinstance(raw_json, dict):
         return raw_json
@@ -147,6 +171,16 @@ def build_card(lead_row: dict) -> dict:
     phone = (lead_row.get("phone") or raw.get("phone") or raw.get("contact_phone") or "").strip()
     signal_typ = str(raw.get("entdeckt_per_signal") or "").strip().lower()
     r = readiness_view(raw, email=email, phone=phone)
+    alter = raw.get("signal_alter_tage")
+    alter = alter if isinstance(alter, int) else None
+    frische = str(raw.get("signal_frische_text") or "").strip() or _frische_text(alter)
+    # Signal-Stapelung: alle Signale der Firma + lesbare Labels (Heißgrad-Beweis).
+    roh_sig = raw.get("signale")
+    signale = [str(s).strip().lower() for s in roh_sig if str(s).strip()] if isinstance(roh_sig, list) else []
+    if not signale and signal_typ:
+        signale = [signal_typ]
+    signale = list(dict.fromkeys(signale))
+    signale_labels = [SIGNAL_LABELS.get(s, s) for s in signale]
     return {
         "firma": (lead_row.get("company_name") or "").strip(),
         "ansprechpartner": (lead_row.get("contact_name") or "").strip(),
@@ -157,6 +191,11 @@ def build_card(lead_row: dict) -> dict:
         "signal": signal_typ,
         "signal_label": SIGNAL_LABELS.get(signal_typ, ""),
         "signal_titel": str(raw.get("signal_titel") or "").strip(),
+        "signal_alter_tage": alter,
+        "signal_frische": frische,
+        "signale_labels": signale_labels,
+        "signale_text": " + ".join(signale_labels),
+        "signal_count": len(signale),
         "kaufbereitschaft_score": r["score"],
         "kaufbereitschaft_stufe": r["stufe"],
         "kaufbereitschaft_gruende": r["gruende"],
@@ -167,7 +206,8 @@ def build_card(lead_row: dict) -> dict:
 _CSV_COLS = [
     ("firma", "Firma"), ("ansprechpartner", "Ansprechpartner"), ("email", "E-Mail"),
     ("telefon", "Telefon"), ("website", "Website"), ("ort", "Ort"),
-    ("signal_label", "Kaufsignal"), ("signal_titel", "Signal-Beleg"),
+    ("signale_text", "Kaufsignale"), ("signal_titel", "Signal-Beleg"),
+    ("signal_frische", "Signal-Frische"),
     ("kaufbereitschaft_stufe", "Kaufbereitschaft"), ("kaufbereitschaft_score", "Score"),
     ("beleg_url", "Beleg-Link"),
 ]

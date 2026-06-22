@@ -54,6 +54,10 @@
   .badge.mittel{background:var(--mittel-bg); border-color:var(--mittel)} .badge.mittel .lvl{color:var(--mittel)}
   .badge.niedrig{background:var(--niedrig-bg); border-color:var(--niedrig)} .badge.niedrig .lvl{color:var(--niedrig)}
   .signal{display:inline-flex; align-items:center; gap:7px; align-self:flex-start; background:rgba(110,168,254,.12); border:1px solid rgba(110,168,254,.35); color:var(--acc); border-radius:999px; padding:5px 11px; font-size:12.5px; font-weight:600}
+  .stapel{display:inline-flex; align-items:center; gap:7px; align-self:flex-start; background:rgba(248,113,113,.13); border:1px solid rgba(248,113,113,.45); color:#fca5a5; border-radius:999px; padding:5px 11px; font-size:12.5px; font-weight:700}
+  .sigrow{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .frische{display:inline-flex; align-items:center; gap:6px; background:rgba(110,231,183,.12); border:1px solid rgba(110,231,183,.38); color:var(--hoch); border-radius:999px; padding:5px 11px; font-size:12.5px; font-weight:600}
+  .frische.alt{background:rgba(251,191,36,.12); border-color:rgba(251,191,36,.42); color:#fbbf24}
   .why{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:5px}
   .why li{color:var(--txt); font-size:13px; padding-left:18px; position:relative}
   .why li::before{content:"✓"; position:absolute; left:0; color:var(--hoch); font-weight:800}
@@ -119,13 +123,20 @@ function card(l){
   if(l.ansprechpartner) contact.unshift(`<span><span class="ic">👤</span>${esc(l.ansprechpartner)}</span>`);
   const why = (l.kaufbereitschaft_gruende||[]).map(g=>`<li>${esc(g)}</li>`).join("");
   const beleg = l.beleg_url ? `<div class="beleg">Beleg: <a href="${esc(l.beleg_url)}" target="_blank" rel="noopener">Stellenanzeige ansehen ↗</a></div>` : "";
-  const sig = l.signal_label ? `<span class="signal">📡 ${esc(l.signal_label)}</span>` : "";
+  const cnt = l.signal_count||0;
+  const labels = l.signale_labels||(l.signal_label?[l.signal_label]:[]);
+  const sig = (cnt>=2)
+    ? `<span class="stapel" title="Mehrere gleichzeitige Kaufsignale — besonders heißer Lead">🔥 ${cnt} Signale: ${esc(labels.join(" + "))}</span>`
+    : (l.signal_label ? `<span class="signal">📡 ${esc(l.signal_label)}</span>` : "");
+  const alt = (l.signal_alter_tage!=null && l.signal_alter_tage>90);
+  const frische = l.signal_frische ? `<span class="frische${alt?' alt':''}" title="${alt?'Anzeige älter — Aktualität vor Ansprache prüfen':'Anzeige aktuell'}">🕒 Signal ${esc(l.signal_frische)}</span>` : "";
+  const sigrow = (sig||frische) ? `<div class="sigrow">${sig}${frische}</div>` : "";
   return `<div class="card ${stufe}">
     <div class="chead">
       <div><p class="firma">${esc(l.firma||"—")}</p>${l.ort?`<p class="ort">${esc(l.ort)}</p>`:""}</div>
       <div class="badge ${stufe}"><div class="lvl">${esc(stufe)}</div><div class="sc">${esc(l.kaufbereitschaft_score)}</div><div class="cap">Score</div></div>
     </div>
-    ${sig}
+    ${sigrow}
     ${why?`<ul class="why">${why}</ul>`:""}
     ${beleg}
     ${contact.length?`<div class="contact">${contact.join("")}</div>`:""}

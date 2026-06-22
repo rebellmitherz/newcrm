@@ -18,6 +18,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8799", "--directory", "C:/Users/micha/Desktop/KundenAgent/product/ui"],
       "port": 8799
+    },
+    {
+      "name": "crm-frontend-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8790", "--directory", "C:/Users/micha/Desktop/crm/frontend"],
+      "port": 8790
     }
   ]
 }
