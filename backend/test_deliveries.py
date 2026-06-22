@@ -111,12 +111,44 @@ def test_build_card_einzelsignal_count_eins():
     assert c["signale_text"] == "Stellt Vertrieb ein"
 
 
+def test_quelle_name_aus_url():
+    assert d._quelle_name("https://www.stepstone.de/stellenangebote--x") == "Stepstone"
+    assert d._quelle_name("https://www.linkedin.com/jobs/view/123") == "LinkedIn"
+    assert d._quelle_name("https://www.yourfirm.de/job/abc") == "Yourfirm"
+    assert d._quelle_name("") == ""
+
+
+def test_belege_aus_signal_belege():
+    raw = {"entdeckt_per_signal": "appointment_setter",
+           "signale": ["appointment_setter", "sales_hiring"], "signal_count": 2,
+           "signal_belege": [
+               {"signal_typ": "appointment_setter", "titel": "SDR", "quelle_url": "https://linkedin.com/jobs/view/9", "alter_tage": 3},
+               {"signal_typ": "sales_hiring", "titel": "Vertrieb", "quelle_url": "https://stepstone.de/j", "alter_tage": 40}],
+           "kaufbereitschaft_score": 92, "kaufbereitschaft_stufe": "hoch"}
+    c = d.build_card({"company_name": "Heiss GmbH", "raw_json": json.dumps(raw)})
+    assert len(c["belege"]) == 2
+    assert c["belege"][0]["quelle_name"] == "LinkedIn" and c["belege"][0]["frische"] == "vor 3 Tagen"
+    assert c["belege"][1]["quelle_name"] == "Stepstone"
+    assert "LinkedIn" in c["quellen_text"] and "Stepstone" in c["quellen_text"]
+
+
+def test_belege_fallback_einzelsignal():
+    raw = {"entdeckt_per_signal": "sales_hiring", "signal_titel": "Vertrieb",
+           "signal_quelle_url": "https://www.stepstone.de/j1", "signal_alter_tage": 5,
+           "kaufbereitschaft_score": 70, "kaufbereitschaft_stufe": "hoch"}
+    c = d.build_card({"company_name": "Solo GmbH", "raw_json": json.dumps(raw)})
+    assert len(c["belege"]) == 1
+    assert c["belege"][0]["quelle_name"] == "Stepstone"
+    assert c["quellen_text"] == "Stepstone"
+
+
 def test_build_card_defensiv_ohne_raw():
     c = d.build_card({"company_name": "Y", "raw_json": "kein json{"})
     assert c["firma"] == "Y"
     assert 0 <= c["kaufbereitschaft_score"] <= 100
     assert c["signal_label"] == ""   # kein Signal → leer
     assert c["signal_count"] == 0
+    assert c["belege"] == []
 
 
 def test_cards_to_csv():

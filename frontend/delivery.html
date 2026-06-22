@@ -67,6 +67,12 @@
   .contact .ic{width:16px; text-align:center; color:var(--mut); flex:none}
   .beleg{font-size:12px}
   .beleg a{color:var(--acc)}
+  .belege{display:flex; flex-direction:column; gap:5px; border-top:1px solid var(--line); padding-top:11px; margin-top:2px}
+  .belege-cap{font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); font-weight:600}
+  .belegrow{display:flex; align-items:baseline; gap:7px; font-size:12px; color:var(--txt)}
+  .belegrow .ic{flex:none; color:var(--mut)}
+  .belegrow a{color:var(--acc); white-space:nowrap}
+  .belegrow .qname{font-weight:600; color:var(--txt)}
   .empty,.err{text-align:center; color:var(--mut); padding:64px 20px}
   .err{color:#fca5a5}
   .foot{margin-top:40px; text-align:center; color:var(--mut); font-size:12.5px}
@@ -122,7 +128,21 @@ function card(l){
   if(l.website) contact.push(`<a href="${esc(l.website)}" target="_blank" rel="noopener"><span class="ic">🌐</span>${esc(l.website.replace(/^https?:\/\//,''))}</a>`);
   if(l.ansprechpartner) contact.unshift(`<span><span class="ic">👤</span>${esc(l.ansprechpartner)}</span>`);
   const why = (l.kaufbereitschaft_gruende||[]).map(g=>`<li>${esc(g)}</li>`).join("");
-  const beleg = l.beleg_url ? `<div class="beleg">Beleg: <a href="${esc(l.beleg_url)}" target="_blank" rel="noopener">Stellenanzeige ansehen ↗</a></div>` : "";
+  // Beleg-Block: pro Kaufsignal eine nachprüfbare Quelle (Portal + Frische + Link).
+  const belege = (l.belege||[]).filter(b=>b && (b.quelle_url||b.quelle_name));
+  let beleg = "";
+  if (belege.length){
+    const rows = belege.map(b=>{
+      const q = b.quelle_name ? `<span class="qname">${esc(b.quelle_name)}</span>` : "";
+      const fr = b.frische ? ` · ${esc(b.frische)}` : "";
+      const lbl = b.signal_label ? `${esc(b.signal_label)}` : (b.titel?esc(b.titel.slice(0,60)):"Stellenanzeige");
+      const link = b.quelle_url ? `<a href="${esc(b.quelle_url)}" target="_blank" rel="noopener">ansehen ↗</a>` : "";
+      return `<div class="belegrow"><span class="ic">📋</span><span>${lbl} · ${q}${fr}</span>${link?` — ${link}`:""}</div>`;
+    }).join("");
+    beleg = `<div class="belege"><div class="belege-cap">Belege (nachprüfbar):</div>${rows}</div>`;
+  } else if (l.beleg_url){
+    beleg = `<div class="belege"><div class="belegrow"><span class="ic">📋</span><span>Beleg</span> — <a href="${esc(l.beleg_url)}" target="_blank" rel="noopener">Stellenanzeige ansehen ↗</a></div></div>`;
+  }
   const cnt = l.signal_count||0;
   const labels = l.signale_labels||(l.signal_label?[l.signal_label]:[]);
   const sig = (cnt>=2)

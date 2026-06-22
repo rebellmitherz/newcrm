@@ -147,6 +147,65 @@ def _frische_text(tage: Any) -> str:
     return "über 1 Jahr"
 
 
+# Portal-Domain → kundenlesbarer Quellenname (Beleg-Vertrauen auf der Lieferseite).
+_QUELLEN_NAMEN: list[tuple[str, str]] = [
+    ("stepstone.", "Stepstone"), ("indeed.", "Indeed"), ("linkedin.", "LinkedIn"),
+    ("xing.", "Xing"), ("yourfirm.", "Yourfirm"), ("stellenanzeigen.", "Stellenanzeigen.de"),
+    ("kimeta.", "Kimeta"), ("jobvector.", "Jobvector"), ("meinestadt.", "meinestadt"),
+    ("jobware.", "Jobware"), ("monster.", "Monster"), ("personio.", "Personio"),
+    ("join.com", "Join"), ("lever.co", "Lever"), ("greenhouse.", "Greenhouse"),
+    ("karriere.", "karriere.at"), ("jobs.ch", "jobs.ch"),
+]
+
+
+def _quelle_name(url: str) -> str:
+    """Kundenlesbarer Name der Beleg-Quelle aus der URL (Portal). Fallback: die Domain."""
+    u = (url or "").strip().lower()
+    if not u:
+        return ""
+    for marker, name in _QUELLEN_NAMEN:
+        if marker in u:
+            return name
+    # Fallback: blanke Domain (ohne www./Protokoll)
+    rest = u.split("//", 1)[-1].split("/", 1)[0]
+    return rest[4:] if rest.startswith("www.") else rest
+
+
+def _belege_bauen(raw: dict, signal_typ: str) -> list[dict]:
+    """Nachprüfbare Beleg-Liste je Lead — pro Signal eine Quelle (Portal + Link +
+    Frische). Nutzt `signal_belege` (Stapelung) wenn vorhanden, sonst das
+    Einzel-Signal aus `signal_titel`/`signal_quelle_url`. Das ist der Wert-Beweis,
+    den der Käufer anklicken kann."""
+    roh = raw.get("signal_belege")
+    out: list[dict] = []
+    if isinstance(roh, list) and roh:
+        for b in roh:
+            if not isinstance(b, dict):
+                continue
+            st = str(b.get("signal_typ") or "").strip().lower()
+            url = str(b.get("quelle_url") or "").strip()
+            alter = b.get("alter_tage")
+            out.append({
+                "signal_label": SIGNAL_LABELS.get(st, b.get("signal_label") or st),
+                "titel": str(b.get("titel") or "").strip(),
+                "quelle_name": _quelle_name(url),
+                "quelle_url": url,
+                "frische": _frische_text(alter if isinstance(alter, int) else None),
+            })
+    else:
+        url = str(raw.get("signal_quelle_url") or "").strip()
+        if signal_typ or url:
+            alter = raw.get("signal_alter_tage")
+            out.append({
+                "signal_label": SIGNAL_LABELS.get(signal_typ, ""),
+                "titel": str(raw.get("signal_titel") or "").strip(),
+                "quelle_name": _quelle_name(url),
+                "quelle_url": url,
+                "frische": _frische_text(alter if isinstance(alter, int) else None),
+            })
+    return out
+
+
 def _parse_raw(raw_json: Any) -> dict:
     if isinstance(raw_json, dict):
         return raw_json
@@ -181,6 +240,7 @@ def build_card(lead_row: dict) -> dict:
         signale = [signal_typ]
     signale = list(dict.fromkeys(signale))
     signale_labels = [SIGNAL_LABELS.get(s, s) for s in signale]
+    belege = _belege_bauen(raw, signal_typ)
     return {
         "firma": (lead_row.get("company_name") or "").strip(),
         "ansprechpartner": (lead_row.get("contact_name") or "").strip(),
@@ -196,6 +256,8 @@ def build_card(lead_row: dict) -> dict:
         "signale_labels": signale_labels,
         "signale_text": " + ".join(signale_labels),
         "signal_count": len(signale),
+        "belege": belege,
+        "quellen_text": ", ".join(dict.fromkeys(b["quelle_name"] for b in belege if b["quelle_name"])),
         "kaufbereitschaft_score": r["score"],
         "kaufbereitschaft_stufe": r["stufe"],
         "kaufbereitschaft_gruende": r["gruende"],
@@ -207,7 +269,7 @@ _CSV_COLS = [
     ("firma", "Firma"), ("ansprechpartner", "Ansprechpartner"), ("email", "E-Mail"),
     ("telefon", "Telefon"), ("website", "Website"), ("ort", "Ort"),
     ("signale_text", "Kaufsignale"), ("signal_titel", "Signal-Beleg"),
-    ("signal_frische", "Signal-Frische"),
+    ("quellen_text", "Quelle(n)"), ("signal_frische", "Signal-Frische"),
     ("kaufbereitschaft_stufe", "Kaufbereitschaft"), ("kaufbereitschaft_score", "Score"),
     ("beleg_url", "Beleg-Link"),
 ]
