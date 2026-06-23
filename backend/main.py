@@ -450,6 +450,11 @@ def search_status() -> dict[str, Any]:
     if not raw:
         return {"pending": 0, "total_in_file": 0, "file_mtime": file_mtime}
 
+    # Müll-Leads (filter_noise) werden beim Import NIE eingefügt → sie dürfen auch
+    # nicht ewig als "pending" zählen, sonst verschwindet der Import-Banner nie
+    # (Bug: ein Garbage-Name wie "Karriere" hielt den Banner dauerhaft offen).
+    raw, _dropped_noise = _imp.filter_noise(raw)
+
     keys_in_file = {
         _imp.normalize_lead(r)["dedup_key"]
         for r in raw
