@@ -475,8 +475,8 @@ async function renderLeads() {
   const projMap = {};
   projs.forEach((p) => { projMap[p.id] = p.name; });
 
-  const leadRowHtml = (l) => `
-          <tr data-id="${l.id}">
+  const leadRowHtml = (l, runKey) => `
+          <tr data-id="${l.id}" data-run="${runKey ? esc(runKey) : ""}">
             <td class="lead-checkcell" style="text-align:center"><input type="checkbox" class="lead-check" data-id="${l.id}"></td>
             <td><strong>${esc(l.company_name) || "—"}</strong>${l.is_signal ? ' <span class="badge sig" title="Signal-Lead">📡</span>' : ""}</td>
             <td>${esc(l.contact_name) || ""}${l.role ? `<br><span class="muted">${esc(l.role)}</span>` : ""}</td>
@@ -503,11 +503,11 @@ async function renderLeads() {
     bodyRows = keys.map((k) => {
       const grp = map.get(k);
       const pname = projMap[grp[0].project_id] || "";
-      const head = `<tr class="run-head"><td colspan="12">📅 ${fmtImport(k)}${pname ? " · " + esc(pname) : ""}<span class="rh-count"> · ${grp.length} Lead${grp.length !== 1 ? "s" : ""}</span></td></tr>`;
-      return head + grp.map(leadRowHtml).join("");
+      const head = `<tr class="run-head"><td colspan="12"><input type="checkbox" class="run-check" data-run="${esc(k)}" title="Alle Leads dieses Laufs markieren"><span style="margin-left:7px">📅 ${fmtImport(k)}${pname ? " · " + esc(pname) : ""}</span><span class="rh-count"> · ${grp.length} Lead${grp.length !== 1 ? "s" : ""}</span></td></tr>`;
+      return head + grp.map((l) => leadRowHtml(l, k)).join("");
     }).join("");
   } else {
-    bodyRows = leads.map(leadRowHtml).join("");
+    bodyRows = leads.map((l) => leadRowHtml(l)).join("");
   }
 
   view.innerHTML = `
@@ -543,6 +543,14 @@ async function renderLeads() {
   }));
   checks().forEach((c) => c.addEventListener("change", updateCount));
   $("#lead-all").addEventListener("change", (e) => { checks().forEach((c) => (c.checked = e.target.checked)); updateCount(); });
+  // „ganzer Lauf": alle Leads eines Import-Laufs auf einmal an-/abwählen.
+  view.querySelectorAll(".run-check").forEach((rc) => rc.addEventListener("change", () => {
+    const key = rc.dataset.run;
+    view.querySelectorAll("tbody tr[data-run]").forEach((tr) => {
+      if (tr.dataset.run === key) { const cb = tr.querySelector(".lead-check"); if (cb) cb.checked = rc.checked; }
+    });
+    updateCount();
+  }));
   $("#lead-go-dlv").addEventListener("click", () => navigate("deliveries"));
   $("#lead-add-dlv").addEventListener("click", async () => {
     const ids = selectedIds();
