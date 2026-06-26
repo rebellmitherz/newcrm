@@ -75,6 +75,12 @@
   .belegrow .qname{font-weight:600; color:var(--txt)}
   /* Anruf-Briefing */
   .briefing{border-top:1px solid var(--line); padding-top:11px; margin-top:2px}
+  .pdf-btn{
+    display:inline-flex; align-items:center; gap:5px; background:rgba(110,168,254,.12);
+    border:1px solid rgba(110,168,254,.35); color:var(--acc); border-radius:8px;
+    padding:4px 11px; font-size:12px; font-weight:600; text-decoration:none;
+  }
+  .pdf-btn:hover{background:rgba(110,168,254,.22)}
   .briefing-toggle{
     display:flex; align-items:center; gap:7px; background:none; border:none;
     color:var(--acc); font-size:12.5px; font-weight:600; cursor:pointer;
@@ -177,8 +183,12 @@ function card(l){
     const op = br.opener ? `<div class="briefing-section"><div class="briefing-cap">Gesprächsöffner</div><p class="briefing-opener">"${esc(br.opener)}"</p></div>` : "";
     const einwaende = (br.einwaende||[]).map(e=>`<div class="einwand"><p class="einwand-q">❓ ${esc(e.frage||"")}</p><p class="einwand-a">✓ ${esc(e.antwort||"")}</p></div>`).join("");
     const ew = einwaende ? `<div class="briefing-section"><div class="briefing-cap">Einwand-Vorbereitung</div>${einwaende}</div>` : "";
+    const pdfUrl = `/d/${TOKEN}/briefing-pdf/${l._pdfIdx}`;
     briefingHtml = `<div class="briefing">
-      <button class="briefing-toggle" onclick="var b=document.getElementById('${brId}');b.classList.toggle('hidden');this.textContent=b.classList.contains('hidden')?'📋 Anruf-Briefing anzeigen':'📋 Anruf-Briefing ausblenden'">📋 Anruf-Briefing anzeigen</button>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button class="briefing-toggle" onclick="var b=document.getElementById('${brId}');b.classList.toggle('hidden');this.textContent=b.classList.contains('hidden')?'📋 Anruf-Briefing anzeigen':'📋 Anruf-Briefing ausblenden'">📋 Anruf-Briefing anzeigen</button>
+        <a href="${pdfUrl}" target="_blank" rel="noopener" class="pdf-btn">📄 PDF</a>
+      </div>
       <div id="${brId}" class="briefing-body hidden">${kp}${op}${ew}</div>
     </div>`;
   }
@@ -213,7 +223,7 @@ async function load(){
     const r = await fetch(`/api/public/delivery/${encodeURIComponent(TOKEN)}`);
     if(!r.ok) throw new Error(r.status);
     const d = await r.json();
-    LEADS = d.leads||[];
+    LEADS = (d.leads||[]).map((l,i)=>({...l,_pdfIdx:i}));
     document.getElementById("title").textContent = d.title || "Ihre Leads";
     if(d.customer) document.getElementById("sub").textContent = `Für ${d.customer} · qualifizierte Signal-Leads mit Kaufbereitschafts-Analyse`;
     const hoch = LEADS.filter(l=>l.kaufbereitschaft_stufe==="hoch").length;

@@ -1183,6 +1183,119 @@ def public_delivery_csv(token: str):
     )
 
 
+@app.get("/d/{token}/briefing-pdf/{lead_idx}")
+def public_briefing_pdf(token: str, lead_idx: int):
+    """Druckfertige Anruf-Briefing-Seite je Lead. Öffnet im Browser → PDF via window.print()."""
+    from fastapi.responses import HTMLResponse
+    data = _public_delivery(token)
+    leads = data.get("leads") or []
+    if lead_idx < 0 or lead_idx >= len(leads):
+        raise HTTPException(404, "Lead nicht gefunden")
+    l = leads[lead_idx]
+    br = l.get("briefing") or {}
+
+    def esc(s: object) -> str:
+        return str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+    firma = esc(l.get("firma") or "—")
+    ort = esc(l.get("ort") or "")
+    stufe = esc((l.get("kaufbereitschaft_stufe") or "niedrig").lower())
+    score = esc(l.get("kaufbereitschaft_score") or "—")
+    signal_label = esc(l.get("signal_label") or l.get("signal") or "")
+    signal_titel = esc(l.get("signal_titel") or "")
+    ansprechpartner = esc(l.get("ansprechpartner") or "")
+    telefon = esc(l.get("telefon") or "")
+    email = esc(l.get("email") or "")
+    website = esc(l.get("website") or "")
+    kurzprofil = esc(br.get("kurzprofil") or "")
+    opener = esc(br.get("opener") or "")
+    einwaende = br.get("einwaende") or []
+
+    stufe_farbe = {"hoch": "#34d399", "mittel": "#fbbf24"}.get(stufe, "#94a3b8")
+
+    kontakt_zeilen = ""
+    if ansprechpartner:
+        kontakt_zeilen += f"<tr><td>Ansprechpartner</td><td>{ansprechpartner}</td></tr>"
+    if telefon:
+        kontakt_zeilen += f"<tr><td>Telefon</td><td>{telefon}</td></tr>"
+    if email:
+        kontakt_zeilen += f"<tr><td>E-Mail</td><td>{email}</td></tr>"
+    if website:
+        kontakt_zeilen += f"<tr><td>Website</td><td>{website}</td></tr>"
+    if ort:
+        kontakt_zeilen += f"<tr><td>Standort</td><td>{ort}</td></tr>"
+
+    einwand_html = ""
+    for e in einwaende:
+        q = esc(e.get("frage") or "")
+        a = esc(e.get("antwort") or "")
+        einwand_html += f"""
+        <div class="einwand">
+          <p class="eq">❓ {q}</p>
+          <p class="ea">✓ {a}</p>
+        </div>"""
+
+    opener_block = f'<div class="block"><h3>Gesprächsöffner</h3><p class="opener">"{opener}"</p></div>' if opener else ""
+    kp_block = f'<div class="block"><h3>Firmen-Kurzprofil</h3><p>{kurzprofil}</p></div>' if kurzprofil else ""
+    ew_block = f'<div class="block"><h3>Einwand-Vorbereitung</h3>{einwand_html}</div>' if einwand_html else ""
+    sig_row = f'<p class="signal-row">📡 {signal_label}{(" · " + signal_titel) if signal_titel else ""}</p>' if signal_label else ""
+
+    html = f"""<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<title>Anruf-Briefing · {firma}</title>
+<style>
+  @page{{margin:18mm 20mm}}
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{font:14px/1.55 -apple-system,Helvetica,Arial,sans-serif;color:#111;background:#fff}}
+  .header{{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:18px}}
+  .firma{{font-size:22px;font-weight:800;letter-spacing:-.01em}}
+  .meta{{font-size:12px;color:#555;margin-top:3px}}
+  .badge{{text-align:center;border:2px solid {stufe_farbe};border-radius:10px;padding:8px 14px;min-width:80px}}
+  .badge .lvl{{font-size:11px;font-weight:700;text-transform:uppercase;color:{stufe_farbe}}}
+  .badge .sc{{font-size:24px;font-weight:800;color:{stufe_farbe}}}
+  .badge .cap{{font-size:10px;color:#888;text-transform:uppercase}}
+  .signal-row{{font-size:12px;font-weight:600;color:#2563eb;margin-bottom:14px}}
+  table{{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px}}
+  td{{padding:5px 8px;border-bottom:1px solid #e5e7eb}}
+  td:first-child{{color:#555;width:130px;font-weight:600}}
+  .block{{background:#f9fafb;border-left:3px solid {stufe_farbe};border-radius:4px;padding:12px 14px;margin-bottom:14px}}
+  h3{{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#555;font-weight:700;margin-bottom:7px}}
+  .opener{{color:#065f46;font-style:italic;font-size:14px}}
+  .einwand{{margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #e5e7eb}}
+  .einwand:last-child{{border-bottom:none;margin-bottom:0;padding-bottom:0}}
+  .eq{{color:#92400e;font-weight:700;font-size:13px;margin-bottom:3px}}
+  .ea{{font-size:13px;color:#111}}
+  .foot{{margin-top:20px;text-align:center;font-size:11px;color:#aaa;border-top:1px solid #e5e7eb;padding-top:10px}}
+  @media print{{.noprint{{display:none}}button{{display:none}}}}
+</style>
+</head>
+<body>
+<button class="noprint" onclick="window.print()" style="margin-bottom:18px;padding:9px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">📄 Als PDF speichern</button>
+<div class="header">
+  <div>
+    <div class="firma">{firma}</div>
+    <div class="meta">Anruf-Briefing · Rebellsystem</div>
+  </div>
+  <div class="badge">
+    <div class="lvl">{stufe}</div>
+    <div class="sc">{score}</div>
+    <div class="cap">Score</div>
+  </div>
+</div>
+{sig_row}
+<table>{kontakt_zeilen}</table>
+{kp_block}
+{opener_block}
+{ew_block}
+<div class="foot">Erstellt mit Rebellsystem · Vertrauchlich · Nur für internen Gebrauch</div>
+<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),400));</script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
 @app.get("/d/{token}")
 def public_delivery_page(token: str) -> FileResponse:
     """Moderne Kundenseite für den Liefer-Link. Token kommt aus dem Pfad; die
