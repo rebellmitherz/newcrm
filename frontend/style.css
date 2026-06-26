@@ -150,6 +150,12 @@ th { background: var(--surface-2); color: var(--text-soft); font-weight: 600; po
 tbody tr:hover { background: var(--primary-soft); cursor: pointer; }
 td.wrap { white-space: normal; }
 
+/* Lauf-Überschrift (Leads nach Import-Lauf gruppiert) */
+tr.run-head td { background: var(--surface-2); border-top: 2px solid var(--accent); color: var(--text); font-weight: 700; font-size: 13px; padding: 10px 14px; white-space: normal; }
+tr.run-head:hover { background: transparent; cursor: default; }
+tr.run-head:hover td { background: var(--surface-2); }
+tr.run-head .rh-count { color: var(--muted); font-weight: 500; }
+
 /* ---------- Buttons / Forms ---------- */
 .btn { padding: 9px 16px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); font-weight: 600; font-size: 13px; }
 .btn:hover { border-color: var(--primary); }

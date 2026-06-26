@@ -469,10 +469,51 @@ async function renderLeads() {
         `<option value="${d.id}">${esc(d.title)}${d.customer ? " · " + esc(d.customer) : ""} (${d.count})</option>`).join("")
     : '<option value="">— erst unter 📦 Lieferungen anlegen —</option>';
 
+  // Nach Lauf gruppieren: jeder Import teilt EINEN imported_at-Zeitstempel = ein Lauf.
+  const groupRun = State.leadGroupByRun !== false;   // Standard: an
+  const projs = await api("/api/projects").catch(() => []);
+  const projMap = {};
+  projs.forEach((p) => { projMap[p.id] = p.name; });
+
+  const leadRowHtml = (l) => `
+          <tr data-id="${l.id}">
+            <td class="lead-checkcell" style="text-align:center"><input type="checkbox" class="lead-check" data-id="${l.id}"></td>
+            <td><strong>${esc(l.company_name) || "—"}</strong>${l.is_signal ? ' <span class="badge sig" title="Signal-Lead">📡</span>' : ""}</td>
+            <td>${esc(l.contact_name) || ""}${l.role ? `<br><span class="muted">${esc(l.role)}</span>` : ""}</td>
+            <td>${esc(l.email) || ""}</td>
+            <td>${esc(l.phone) || ""}</td>
+            <td>${esc(l.city) || ""}</td>
+            <td>${esc(l.industry) || ""}</td>
+            <td>${l.next_action_date ? nextActionPill(l) : '<span class="muted">—</span>'}</td>
+            <td>${l.score != null ? `<span class="badge score">${Math.round(l.score)}</span>` : ""}</td>
+            <td>${l.grade ? `<span class="badge ${gradeClass(l.grade)}">${esc(l.grade)}</span>` : ""}</td>
+            <td>${esc(stageLabel(l.stage))}</td>
+            <td class="muted" style="white-space:nowrap;font-size:12px">${fmtImport(l.imported_at || l.created_at)}</td>
+          </tr>`;
+
+  let bodyRows;
+  if (groupRun) {
+    const map = new Map();
+    leads.forEach((l) => {
+      const k = (l.imported_at || l.created_at || "—").slice(0, 19);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(l);
+    });
+    const keys = Array.from(map.keys()).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0)); // neuester Lauf zuerst
+    bodyRows = keys.map((k) => {
+      const grp = map.get(k);
+      const pname = projMap[grp[0].project_id] || "";
+      const head = `<tr class="run-head"><td colspan="12">📅 ${fmtImport(k)}${pname ? " · " + esc(pname) : ""}<span class="rh-count"> · ${grp.length} Lead${grp.length !== 1 ? "s" : ""}</span></td></tr>`;
+      return head + grp.map(leadRowHtml).join("");
+    }).join("");
+  } else {
+    bodyRows = leads.map(leadRowHtml).join("");
+  }
+
   view.innerHTML = `
     <div class="row" style="margin-bottom:10px;justify-content:space-between">
       <div class="row" style="gap:12px">${kindToggle}<span class="muted">${leads.length} Leads</span></div>
-      <div class="row"><span class="muted">Sortieren:</span>${sortSel}
+      <div class="row"><label class="muted" title="Leads nach Import-Lauf (Datum/Uhrzeit) gruppieren" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="lead-grouprun" ${groupRun ? "checked" : ""}> 📅 nach Lauf</label><span class="muted">Sortieren:</span>${sortSel}
         <button class="btn sm" id="lead-csv">⬇️ CSV</button></div>
     </div>
     <div class="row" id="lead-dlvbar" style="margin-bottom:12px;gap:8px;align-items:center;flex-wrap:wrap;background:var(--panel-2,#0f1626);padding:8px 10px;border:1px solid var(--border);border-radius:9px">
@@ -488,23 +529,7 @@ async function renderLeads() {
       <thead><tr>
         <th style="width:32px"></th><th>Firma</th><th>Kontakt</th><th>E-Mail</th><th>Telefon</th><th>Stadt</th><th>Branche</th><th>Wiedervorlage</th><th>Score</th><th>Grade</th><th>Phase</th><th class="muted" style="white-space:nowrap">Importiert</th>
       </tr></thead>
-      <tbody>
-        ${leads.map((l) => `
-          <tr data-id="${l.id}">
-            <td class="lead-checkcell" style="text-align:center"><input type="checkbox" class="lead-check" data-id="${l.id}"></td>
-            <td><strong>${esc(l.company_name) || "—"}</strong>${l.is_signal ? ' <span class="badge sig" title="Signal-Lead">📡</span>' : ""}</td>
-            <td>${esc(l.contact_name) || ""}${l.role ? `<br><span class="muted">${esc(l.role)}</span>` : ""}</td>
-            <td>${esc(l.email) || ""}</td>
-            <td>${esc(l.phone) || ""}</td>
-            <td>${esc(l.city) || ""}</td>
-            <td>${esc(l.industry) || ""}</td>
-            <td>${l.next_action_date ? nextActionPill(l) : '<span class="muted">—</span>'}</td>
-            <td>${l.score != null ? `<span class="badge score">${Math.round(l.score)}</span>` : ""}</td>
-            <td>${l.grade ? `<span class="badge ${gradeClass(l.grade)}">${esc(l.grade)}</span>` : ""}</td>
-            <td>${esc(stageLabel(l.stage))}</td>
-            <td class="muted" style="white-space:nowrap;font-size:12px">${fmtImport(l.imported_at || l.created_at)}</td>
-          </tr>`).join("")}
-      </tbody>
+      <tbody>${bodyRows}</tbody>
     </table></div>`;
 
   const checks = () => Array.from(view.querySelectorAll(".lead-check"));
@@ -512,6 +537,7 @@ async function renderLeads() {
   const updateCount = () => { $("#lead-selcount").textContent = `${selectedIds().length} ausgewählt`; };
 
   view.querySelectorAll("tbody tr").forEach((tr) => tr.addEventListener("click", (e) => {
+    if (tr.classList.contains("run-head")) return;     // Lauf-Überschrift öffnet keinen Lead
     if (e.target.closest(".lead-checkcell")) return;   // Klick auf die Checkbox öffnet den Lead NICHT
     openLead(tr.dataset.id);
   }));
@@ -533,6 +559,8 @@ async function renderLeads() {
   });
   $("#lead-sort").addEventListener("change", (e) => { State.leadSort = e.target.value; renderLeads(); });
   $("#lead-csv").addEventListener("click", () => exportCsv(leads));
+  const grpToggle = $("#lead-grouprun");
+  if (grpToggle) grpToggle.addEventListener("change", (e) => { State.leadGroupByRun = e.target.checked; renderLeads(); });
   bindKindToggle();
 }
 
