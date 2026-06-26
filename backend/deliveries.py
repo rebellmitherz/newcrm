@@ -37,10 +37,20 @@ _SIGNAL_STAERKE: dict[str, float] = {
     "growth_expansion": 0.65, "marketing_hiring": 0.55, "new_location": 0.55,
 }
 _W_SIGNAL, _W_FIT, _W_KONTAKT = 0.45, 0.25, 0.30
-_GENERISCHE_MAIL_PREFIXES = (
-    "info", "kontakt", "mail", "office", "hello", "hallo", "post",
-    "contact", "service", "support", "willkommen", "anfrage",
-)
+_GENERISCHE_MAIL_PREFIXES = {
+    "info", "kontakt", "contact", "mail", "email", "mails", "office", "buero", "bureau",
+    "hello", "hallo", "moin", "post", "service", "support", "willkommen", "welcome",
+    "anfrage", "anfragen", "kundenservice", "kundendienst", "vertrieb", "sales",
+    "team", "zentrale", "empfang", "reception", "sekretariat", "verwaltung",
+    "buchhaltung", "rechnung", "rechnungen", "finance", "finanzen", "accounting",
+    "einkauf", "bestellung", "bestellungen", "order", "shop", "verkauf", "beratung",
+    "presse", "press", "media", "marketing", "werbung", "pr",
+    "jobs", "job", "karriere", "career", "careers", "bewerbung", "bewerbungen",
+    "recruiting", "hr", "personal", "datenschutz", "dsgvo", "privacy", "impressum",
+    "webmaster", "admin", "noreply", "donotreply", "newsletter", "news",
+    "abo", "praxis", "kanzlei", "termin", "termine", "anmeldung", "reservierung",
+    "reservation", "booking", "billing", "invoice", "feedback", "kontaktformular",
+}
 
 
 def gen_token() -> str:
@@ -63,11 +73,52 @@ def _stufe(score: int) -> str:
     return "hoch" if score >= 70 else ("mittel" if score >= 45 else "niedrig")
 
 
-def _persoenliche_mail(email: str) -> bool:
+def _local_tokens(local: str) -> list[str]:
+    for sep in ".-_+":
+        local = local.replace(sep, " ")
+    for d in "0123456789":
+        local = local.replace(d, " ")
+    return [t for t in local.split() if t]
+
+
+def _persoenliche_mail(email: str, contact_name: str = "") -> bool:
+    """True NUR, wenn die Adresse plausibel einen Personennamen trägt — info@,
+    kontakt@, vertrieb@, info.berlin@ … gelten NIE als persönlich (konservativ,
+    sonst verliert die Lieferung beim Kunden Glaubwürdigkeit)."""
     email = (email or "").strip().lower()
     if "@" not in email:
         return False
-    return email.split("@", 1)[0] not in _GENERISCHE_MAIL_PREFIXES
+    local = email.split("@", 1)[0].strip()
+    toks = _local_tokens(local)
+    if not toks:
+        return False
+    if local in _GENERISCHE_MAIL_PREFIXES or any(t in _GENERISCHE_MAIL_PREFIXES for t in toks):
+        return False
+    name = (contact_name or "").lower()
+    for ch in ".,-_/\\":
+        name = name.replace(ch, " ")
+    nt = [t for t in name.split() if len(t) >= 3]
+    if nt and any(t in toks for t in nt):
+        return True
+    alpha = [t for t in toks if t.isalpha() and len(t) >= 2]
+    return len(alpha) >= 2
+
+
+def _ist_mobilnummer(phone: str) -> bool:
+    """Dt. Mobilfunk (015x/016x/017x bzw. +4915…) — eher Direktkontakt als Zentrale."""
+    p = (phone or "").strip()
+    if not p:
+        return False
+    digits = "".join(c for c in p if c.isdigit())
+    if p.lstrip().startswith("+"):
+        if digits.startswith("49"):
+            digits = digits[2:]
+        else:
+            return False
+    elif digits.startswith("0049"):
+        digits = digits[4:]
+    digits = digits.lstrip("0")
+    return digits.startswith(("15", "16", "17"))
 
 
 def _fallback_readiness(raw: dict, email: str, phone: str) -> dict:
@@ -75,8 +126,10 @@ def _fallback_readiness(raw: dict, email: str, phone: str) -> dict:
     s = _SIGNAL_STAERKE.get(signal_typ, 0.5)
     fit = _clamp01(_f(raw.get("signal_fit_score")))
     cq = _clamp01(_f(raw.get("contact_quality_score")) / 100.0)
-    has_phone = bool((phone or raw.get("phone") or raw.get("contact_phone") or "").strip())
-    pers = _persoenliche_mail(email or raw.get("email") or "")
+    tel_roh = (phone or raw.get("phone") or raw.get("contact_phone") or "").strip()
+    has_phone = bool(tel_roh)
+    name = raw.get("contact_full_name") or raw.get("managing_director") or raw.get("contact_person") or ""
+    pers = _persoenliche_mail(email or raw.get("email") or "", name)
     kontakt = _clamp01(cq * 0.6 + (0.2 if has_phone else 0.0) + (0.2 if pers else 0.0))
     score = int(round(_clamp01(_W_SIGNAL * s + _W_FIT * fit + _W_KONTAKT * kontakt) * 100))
 
@@ -87,10 +140,11 @@ def _fallback_readiness(raw: dict, email: str, phone: str) -> dict:
         gruende.append(f"Hohe Passung (Fit {fit:.2f})")
     elif fit >= 0.45:
         gruende.append(f"Solide Passung (Fit {fit:.2f})")
+    tel_label = "Mobilnummer (Direktkontakt)" if _ist_mobilnummer(tel_roh) else "Telefonnummer vorhanden"
     if has_phone and pers:
-        gruende.append("Direkt erreichbar: Telefon + persönliche E-Mail")
+        gruende.append(f"{tel_label} + persönliche E-Mail")
     elif has_phone:
-        gruende.append("Telefon vorhanden — direkt anrufbar")
+        gruende.append(tel_label)
     elif pers:
         gruende.append("Persönliche E-Mail-Adresse")
     return {
@@ -262,6 +316,7 @@ def build_card(lead_row: dict) -> dict:
         "kaufbereitschaft_stufe": r["stufe"],
         "kaufbereitschaft_gruende": r["gruende"],
         "beleg_url": r["beleg_url"],
+        "briefing": raw.get("briefing") or {"kurzprofil": "", "opener": "", "einwaende": []},
     }
 
 

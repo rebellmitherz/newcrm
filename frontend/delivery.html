@@ -73,6 +73,23 @@
   .belegrow .ic{flex:none; color:var(--mut)}
   .belegrow a{color:var(--acc); white-space:nowrap}
   .belegrow .qname{font-weight:600; color:var(--txt)}
+  /* Anruf-Briefing */
+  .briefing{border-top:1px solid var(--line); padding-top:11px; margin-top:2px}
+  .briefing-toggle{
+    display:flex; align-items:center; gap:7px; background:none; border:none;
+    color:var(--acc); font-size:12.5px; font-weight:600; cursor:pointer;
+    padding:0; letter-spacing:.02em;
+  }
+  .briefing-toggle:hover{opacity:.82}
+  .briefing-body{display:none; margin-top:10px; display:flex; flex-direction:column; gap:10px}
+  .briefing-body.hidden{display:none}
+  .briefing-section{font-size:12.5px}
+  .briefing-cap{font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); font-weight:600; margin-bottom:4px}
+  .briefing-text{color:var(--txt); line-height:1.55; margin:0}
+  .briefing-opener{color:var(--hoch); font-style:italic; margin:0}
+  .einwand{background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:9px 11px; margin-bottom:6px}
+  .einwand-q{color:var(--mittel); font-size:12px; font-weight:600; margin:0 0 3px}
+  .einwand-a{color:var(--txt); font-size:12px; margin:0; line-height:1.5}
   .empty,.err{text-align:center; color:var(--mut); padding:64px 20px}
   .err{color:#fca5a5}
   .foot{margin-top:40px; text-align:center; color:var(--mut); font-size:12.5px}
@@ -151,6 +168,20 @@ function card(l){
   const alt = (l.signal_alter_tage!=null && l.signal_alter_tage>90);
   const frische = l.signal_frische ? `<span class="frische${alt?' alt':''}" title="${alt?'Anzeige älter — Aktualität vor Ansprache prüfen':'Anzeige aktuell'}">🕒 Signal ${esc(l.signal_frische)}</span>` : "";
   const sigrow = (sig||frische) ? `<div class="sigrow">${sig}${frische}</div>` : "";
+  // Anruf-Briefing Block
+  const br = l.briefing || {};
+  const brId = "br_" + Math.random().toString(36).slice(2);
+  let briefingHtml = "";
+  if(br.kurzprofil || br.opener || (br.einwaende && br.einwaende.length)){
+    const kp = br.kurzprofil ? `<div class="briefing-section"><div class="briefing-cap">Firmen-Kurzprofil</div><p class="briefing-text">${esc(br.kurzprofil)}</p></div>` : "";
+    const op = br.opener ? `<div class="briefing-section"><div class="briefing-cap">Gesprächsöffner</div><p class="briefing-opener">"${esc(br.opener)}"</p></div>` : "";
+    const einwaende = (br.einwaende||[]).map(e=>`<div class="einwand"><p class="einwand-q">❓ ${esc(e.frage||"")}</p><p class="einwand-a">✓ ${esc(e.antwort||"")}</p></div>`).join("");
+    const ew = einwaende ? `<div class="briefing-section"><div class="briefing-cap">Einwand-Vorbereitung</div>${einwaende}</div>` : "";
+    briefingHtml = `<div class="briefing">
+      <button class="briefing-toggle" onclick="var b=document.getElementById('${brId}');b.classList.toggle('hidden');this.textContent=b.classList.contains('hidden')?'📋 Anruf-Briefing anzeigen':'📋 Anruf-Briefing ausblenden'">📋 Anruf-Briefing anzeigen</button>
+      <div id="${brId}" class="briefing-body hidden">${kp}${op}${ew}</div>
+    </div>`;
+  }
   return `<div class="card ${stufe}">
     <div class="chead">
       <div><p class="firma">${esc(l.firma||"—")}</p>${l.ort?`<p class="ort">${esc(l.ort)}</p>`:""}</div>
@@ -160,6 +191,7 @@ function card(l){
     ${why?`<ul class="why">${why}</ul>`:""}
     ${beleg}
     ${contact.length?`<div class="contact">${contact.join("")}</div>`:""}
+    ${briefingHtml}
   </div>`;
 }
 
