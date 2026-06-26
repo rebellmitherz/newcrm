@@ -81,6 +81,18 @@
     padding:4px 11px; font-size:12px; font-weight:600; text-decoration:none;
   }
   .pdf-btn:hover{background:rgba(110,168,254,.22)}
+  .brief-btn{background:rgba(52,211,153,.1); border-color:rgba(52,211,153,.35); color:var(--hoch)}
+  .brief-btn:hover{background:rgba(52,211,153,.2)}
+  /* LinkedIn */
+  .li-block{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:11px;margin-top:2px}
+  .li-foto{width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--line);flex:none}
+  .li-foto-ph{width:44px;height:44px;border-radius:50%;background:var(--card2);border:2px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:18px}
+  .li-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .li-name{font-size:13px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .li-titel{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .li-tenure{font-size:11px;color:var(--mut)}
+  .li-link{margin-left:auto;flex:none;font-size:12px;color:var(--acc);text-decoration:none;font-weight:600;white-space:nowrap}
+  .li-link:hover{text-decoration:underline}
   .briefing-toggle{
     display:flex; align-items:center; gap:7px; background:none; border:none;
     color:var(--acc); font-size:12.5px; font-weight:600; cursor:pointer;
@@ -174,6 +186,23 @@ function card(l){
   const alt = (l.signal_alter_tage!=null && l.signal_alter_tage>90);
   const frische = l.signal_frische ? `<span class="frische${alt?' alt':''}" title="${alt?'Anzeige älter — Aktualität vor Ansprache prüfen':'Anzeige aktuell'}">🕒 Signal ${esc(l.signal_frische)}</span>` : "";
   const sigrow = (sig||frische) ? `<div class="sigrow">${sig}${frische}</div>` : "";
+  // LinkedIn-Profil Block
+  const li = l.linkedin_profil || {};
+  let liHtml = "";
+  if(li.url || li.foto_url || li.titel){
+    const foto = li.foto_url
+      ? `<img class="li-foto" src="${esc(li.foto_url)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : "";
+    const fotoPh = `<div class="li-foto-ph" style="${li.foto_url?'display:none':''}">👤</div>`;
+    const liName = l.ansprechpartner ? `<div class="li-name">${esc(l.ansprechpartner)}</div>` : "";
+    const liTitel = li.titel ? `<div class="li-titel">${esc(li.titel)}</div>` : "";
+    const tenure = li.tenure_jahre > 0 ? `<div class="li-tenure">seit ${li.seit||li.tenure_jahre+" J."} · ${li.tenure_jahre} Jahr${li.tenure_jahre!==1?"e":""}</div>` : "";
+    const liLink = li.url ? `<a class="li-link" href="${esc(li.url)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : "";
+    liHtml = `<div class="li-block">${foto}${fotoPh}<div class="li-info">${liName}${liTitel}${tenure}</div>${liLink}</div>`;
+  } else if(l.ansprechpartner && !li.url){
+    // Ansprechpartner vorhanden, aber noch kein LinkedIn — dezenter Hinweis
+    liHtml = "";
+  }
   // Anruf-Briefing Block
   const br = l.briefing || {};
   const brId = "br_" + Math.random().toString(36).slice(2);
@@ -188,6 +217,7 @@ function card(l){
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button class="briefing-toggle" onclick="var b=document.getElementById('${brId}');b.classList.toggle('hidden');this.textContent=b.classList.contains('hidden')?'📋 Anruf-Briefing anzeigen':'📋 Anruf-Briefing ausblenden'">📋 Anruf-Briefing anzeigen</button>
         <a href="${pdfUrl}" target="_blank" rel="noopener" class="pdf-btn">📄 PDF</a>
+        <a href="/d/${TOKEN}/brief-pdf/${l._pdfIdx}" target="_blank" rel="noopener" class="pdf-btn brief-btn">✉ Brief</a>
       </div>
       <div id="${brId}" class="briefing-body hidden">${kp}${op}${ew}</div>
     </div>`;
@@ -201,6 +231,7 @@ function card(l){
     ${why?`<ul class="why">${why}</ul>`:""}
     ${beleg}
     ${contact.length?`<div class="contact">${contact.join("")}</div>`:""}
+    ${liHtml}
     ${briefingHtml}
   </div>`;
 }

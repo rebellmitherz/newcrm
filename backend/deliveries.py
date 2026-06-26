@@ -317,6 +317,7 @@ def build_card(lead_row: dict) -> dict:
         "kaufbereitschaft_gruende": r["gruende"],
         "beleg_url": r["beleg_url"],
         "briefing": raw.get("briefing") or {"kurzprofil": "", "opener": "", "einwaende": []},
+        "linkedin_profil": raw.get("linkedin_profil") or {},
     }
 
 
