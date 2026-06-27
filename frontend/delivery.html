@@ -125,6 +125,8 @@
   .einwand{background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:9px 11px; margin-bottom:6px}
   .einwand-q{color:var(--mittel); font-size:12px; font-weight:600; margin:0 0 3px}
   .einwand-a{color:var(--txt); font-size:12px; margin:0; line-height:1.5}
+  .einwand-ziel{color:var(--mut); font-size:11px; margin:5px 0 0; line-height:1.45}
+  .einwand-next{color:var(--acc); font-size:11px; margin:3px 0 0; line-height:1.45; font-weight:600}
   .empty,.err{text-align:center; color:var(--mut); padding:64px 20px}
   .err{color:#fca5a5}
   .foot{margin-top:40px; text-align:center; color:var(--mut); font-size:12.5px}
@@ -252,9 +254,9 @@ function card(l){
     const einwaendeListe = br.einwaende || [];
     const topEinwand = einwaendeListe[0];
     const restEinwaende = einwaendeListe.slice(1);
-    const topEinwandHtml = topEinwand ? `<div class="briefing-section"><div class="briefing-cap">Häufigster Einwand</div><div class="einwand"><p class="einwand-q">❓ ${esc(topEinwand.frage||"")}</p><p class="einwand-a">✓ ${esc(topEinwand.antwort||"")}</p></div></div>` : "";
+    const topEinwandHtml = topEinwand ? `<div class="briefing-section"><div class="briefing-cap">Wahrscheinlichster Einwand</div><div class="einwand"><p class="einwand-q">❓ ${esc(topEinwand.frage||"")}</p><p class="einwand-a">✓ ${esc(topEinwand.antwort||"")}</p>${topEinwand.naechster_schritt?`<p class="einwand-next">→ ${esc(topEinwand.naechster_schritt)}</p>`:""}</div></div>` : "";
     const ewId = "ew_" + Math.random().toString(36).slice(2);
-    const restEinwandeHtml = restEinwaende.map(e=>`<div class="einwand"><p class="einwand-q">❓ ${esc(e.frage||"")}</p><p class="einwand-a">✓ ${esc(e.antwort||"")}</p></div>`).join("");
+    const restEinwandeHtml = restEinwaende.map(e=>`<div class="einwand"><p class="einwand-q">❓ ${esc(e.frage||"")}</p><p class="einwand-a">✓ ${esc(e.antwort||"")}</p>${e.ziel?`<p class="einwand-ziel">Ziel: ${esc(e.ziel)}</p>`:""}${e.naechster_schritt?`<p class="einwand-next">→ ${esc(e.naechster_schritt)}</p>`:""}</div>`).join("");
     const ew = restEinwandeHtml ? `<div class="briefing-section"><button class="briefing-toggle" onclick="var e=document.getElementById('${ewId}');e.classList.toggle('hidden');this.textContent=e.classList.contains('hidden')?'Weitere Einwände anzeigen ▼':'Weitere Einwände ausblenden ▲'">Weitere Einwände anzeigen ▼</button><div id="${ewId}" class="briefing-body hidden" style="margin-top:6px">${restEinwandeHtml}</div></div>` : "";
     const pdfUrl = `/d/${TOKEN}/briefing-pdf/${l._pdfIdx}`;
     briefingHtml = `<div class="briefing">
