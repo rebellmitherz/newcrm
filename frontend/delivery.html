@@ -84,6 +84,16 @@
   .brief-btn{background:rgba(52,211,153,.1); border-color:rgba(52,211,153,.35); color:var(--hoch)}
   .brief-btn:hover{background:rgba(52,211,153,.2)}
   .action-hint{font-size:11.5px; color:var(--mut); margin:0 0 8px; padding:0; letter-spacing:.01em}
+  .mail-btn{display:inline-flex;align-items:center;gap:5px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);color:var(--mittel);border-radius:8px;padding:4px 11px;font-size:12px;font-weight:600;cursor:pointer}
+  .mail-btn:hover{background:rgba(251,191,36,.2)}
+  .mail-body{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .mail-body.hidden{display:none}
+  .mail-preview{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 13px}
+  .mail-betreff-cap{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);font-weight:600;margin:0 0 4px}
+  .mail-betreff{font-size:12.5px;font-weight:600;color:var(--txt);margin:0 0 8px}
+  .mail-text{color:var(--txt);font-size:12.5px;line-height:1.6;white-space:pre-wrap;margin:0;font-family:inherit}
+  .copy-btn{align-self:flex-start;background:rgba(110,168,254,.12);border:1px solid rgba(110,168,254,.35);color:var(--acc);border-radius:8px;padding:4px 11px;font-size:12px;font-weight:600;cursor:pointer}
+  .copy-btn:hover{background:rgba(110,168,254,.22)}
   /* LinkedIn */
   .li-block{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:11px;margin-top:2px}
   .li-foto{width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--line);flex:none}
@@ -155,7 +165,14 @@ let LEADS = [];
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 const RANK = {hoch:3, mittel:2, niedrig:1};
-
+const _MAIL_BETREFF = {
+  sales_hiring:"Vertrieb ausbauen — qualifizierte Leads für Ihr Team",
+  appointment_setter:"Mehr qualifizierte Termine für Ihren Vertrieb",
+  growth_expansion:"Wachstumsphase richtig nutzen — passende Leads",
+  marketing_hiring:"Marketing-Investition mit Lead-Qualität absichern",
+  leadership_hiring:"Starker Start für Ihre neue Führungskraft",
+  new_location:"Neue Leads für Ihren neuen Standort",
+};
 function card(l){
   const stufe = (l.kaufbereitschaft_stufe||"niedrig").toLowerCase();
   const contact = [];
@@ -207,6 +224,18 @@ function card(l){
   // Anruf-Briefing Block
   const br = l.briefing || {};
   const brId = "br_" + Math.random().toString(36).slice(2);
+  const mailId = "ml_" + Math.random().toString(36).slice(2);
+  let mailToggleBtn = "", mailBodyHtml = "";
+  const aufhg = (l.aufhaenger || "").trim();
+  if(aufhg || l.signal){
+    const sig = l.signal || "";
+    const betreff = _MAIL_BETREFF[sig] || "Qualifizierter Lead — passend zu Ihrem Kaufsignal";
+    const anrede = l.ansprechpartner ? `Guten Tag ${l.ansprechpartner},` : "Guten Tag,";
+    const ahText = aufhg || (l.signal_label ? `Ihr Unternehmen zeigt aktuell ein klares Kaufsignal: ${l.signal_label}. Das ist genau unser Ansatzpunkt.` : "Ihr Unternehmen zeigt aktuell ein konkretes Kaufsignal — das ist unser Ansatzpunkt.");
+    const mailText = `${anrede}\n\n${ahText}\n\nIch würde mich freuen, Ihnen in einem kurzen Gespräch zu zeigen, wie wir konkret helfen können.\n\nWann hätten Sie 15 Minuten Zeit?\n\nMit freundlichen Grüßen`;
+    mailToggleBtn = `<button class="mail-btn" onclick="var m=document.getElementById('${mailId}');m.classList.toggle('hidden');this.textContent=m.classList.contains('hidden')?'📧 Mail-Vorschau':'📧 Mail schließen'">📧 Mail-Vorschau</button>`;
+    mailBodyHtml = `<div class="mail-body hidden" id="${mailId}"><div class="mail-preview"><div class="mail-betreff-cap">Betreff</div><div class="mail-betreff">${esc(betreff)}</div><pre class="mail-text">${esc(mailText)}</pre></div><button class="copy-btn" onclick="copyMail(this)">Kopieren</button></div>`;
+  }
   let briefingHtml = "";
   if(br.kurzprofil || br.opener || (br.einwaende && br.einwaende.length)){
     const kp = br.kurzprofil ? `<div class="briefing-section"><div class="briefing-cap">Firmen-Kurzprofil</div><p class="briefing-text">${esc(br.kurzprofil)}</p></div>` : "";
@@ -218,10 +247,12 @@ function card(l){
       <p class="action-hint">Empfohlener Ablauf: Briefing lesen → anrufen → Brief nachschicken.</p>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button class="briefing-toggle" onclick="var b=document.getElementById('${brId}');b.classList.toggle('hidden');this.textContent=b.classList.contains('hidden')?'📋 Anruf-Briefing anzeigen':'📋 Anruf-Briefing ausblenden'">📋 Anruf-Briefing anzeigen</button>
+        ${mailToggleBtn}
         <a href="${pdfUrl}" target="_blank" rel="noopener" class="pdf-btn">📄 PDF</a>
         <a href="/d/${TOKEN}/brief-pdf/${l._pdfIdx}" target="_blank" rel="noopener" class="pdf-btn brief-btn">✉ Brief</a>
       </div>
       <div id="${brId}" class="briefing-body hidden">${kp}${op}${ew}</div>
+      ${mailBodyHtml}
     </div>`;
   }
   return `<div class="card ${stufe}">
@@ -238,6 +269,13 @@ function card(l){
   </div>`;
 }
 
+function copyMail(btn){
+  const pre = btn.closest(".mail-body").querySelector(".mail-text");
+  navigator.clipboard.writeText(pre ? pre.textContent : "").then(()=>{
+    btn.textContent = "✓ Kopiert";
+    setTimeout(()=>{btn.textContent="Kopieren";}, 2000);
+  }).catch(()=>{btn.textContent="Manuell kopieren";});
+}
 function render(){
   const f = document.getElementById("filter").value;
   const s = document.getElementById("sort").value;
