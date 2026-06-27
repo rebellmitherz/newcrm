@@ -83,6 +83,7 @@
   .pdf-btn:hover{background:rgba(110,168,254,.22)}
   .brief-btn{background:rgba(52,211,153,.1); border-color:rgba(52,211,153,.35); color:var(--hoch)}
   .brief-btn:hover{background:rgba(52,211,153,.2)}
+  .action-hint{font-size:11.5px; color:var(--mut); margin:0 0 8px; padding:0; letter-spacing:.01em}
   /* LinkedIn */
   .li-block{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:11px;margin-top:2px}
   .li-foto{width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--line);flex:none}
@@ -214,6 +215,7 @@ function card(l){
     const ew = einwaende ? `<div class="briefing-section"><div class="briefing-cap">Einwand-Vorbereitung</div>${einwaende}</div>` : "";
     const pdfUrl = `/d/${TOKEN}/briefing-pdf/${l._pdfIdx}`;
     briefingHtml = `<div class="briefing">
+      <p class="action-hint">Empfohlener Ablauf: Briefing lesen → anrufen → Brief nachschicken.</p>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button class="briefing-toggle" onclick="var b=document.getElementById('${brId}');b.classList.toggle('hidden');this.textContent=b.classList.contains('hidden')?'📋 Anruf-Briefing anzeigen':'📋 Anruf-Briefing ausblenden'">📋 Anruf-Briefing anzeigen</button>
         <a href="${pdfUrl}" target="_blank" rel="noopener" class="pdf-btn">📄 PDF</a>
