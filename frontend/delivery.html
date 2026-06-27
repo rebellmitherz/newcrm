@@ -179,6 +179,9 @@ const _MAIL_BETREFF = {
   leadership_hiring:"Starker Start für Ihre neue Führungskraft",
   new_location:"Neue Leads für Ihren neuen Standort",
 };
+function fixKp(s){
+  return (s||"").replace(/([a-zäöüß]):([A-Za-zÄÖÜ])/g,"$1: $2").replace(/([a-zäöüß])([A-ZÄÖÜ][a-z])/g,"$1 $2");
+}
 function card(l){
   const stufe = (l.kaufbereitschaft_stufe||"niedrig").toLowerCase();
   const contact = [];
@@ -240,21 +243,23 @@ function card(l){
     const ahText = aufhg || (l.signal_label ? `Ihr Unternehmen zeigt aktuell ein klares Kaufsignal: ${l.signal_label}. Das ist genau unser Ansatzpunkt.` : "Ihr Unternehmen zeigt aktuell ein konkretes Kaufsignal — das ist unser Ansatzpunkt.");
     const mailText = `${anrede}\n\n${ahText}\n\nIch würde mich freuen, Ihnen in einem kurzen Gespräch zu zeigen, wie wir konkret helfen können.\n\nWann hätten Sie 15 Minuten Zeit?\n\nMit freundlichen Grüßen`;
     mailToggleBtn = `<button class="mail-btn" onclick="var m=document.getElementById('${mailId}');m.classList.toggle('hidden');this.textContent=m.classList.contains('hidden')?'📧 Mail-Vorschau':'📧 Mail schließen'">📧 Mail-Vorschau</button>`;
-    mailBodyHtml = `<div class="mail-body hidden" id="${mailId}"><div class="mail-preview"><div class="mail-betreff-cap">Betreff</div><div class="mail-betreff">${esc(betreff)}</div><pre class="mail-text">${esc(mailText)}</pre></div><button class="copy-btn" onclick="copyMail(this)">Kopieren</button></div>`;
+    mailBodyHtml = `<div class="mail-body hidden" id="${mailId}"><div class="mail-preview"><div class="mail-betreff-cap">Mail-Vorschau</div><div style="font-size:11.5px;color:var(--mut);margin:0 0 10px">Direkt kopieren oder als Vorlage nutzen.</div><div class="mail-betreff-cap">Betreff</div><div class="mail-betreff">${esc(betreff)}</div><pre class="mail-text">${esc(mailText)}</pre></div><button class="copy-btn" onclick="copyMail(this)">Kopieren</button></div>`;
   }
   let briefingHtml = "";
   if(br.kurzprofil || br.opener || (br.einwaende && br.einwaende.length)){
-    const kp = br.kurzprofil ? `<div class="briefing-section"><div class="briefing-cap">Firmen-Kurzprofil</div><p class="briefing-text">${esc(br.kurzprofil)}</p></div>` : "";
+    const kp = br.kurzprofil ? `<div class="briefing-section"><div class="briefing-cap">Firmen-Kurzprofil</div><p class="briefing-text">${esc(fixKp(br.kurzprofil))}</p></div>` : "";
     const op = br.opener ? `<div class="briefing-section"><div class="briefing-cap">Gesprächsöffner</div><p class="briefing-opener">"${esc(br.opener)}"</p></div>` : "";
     const einwaendeListe = br.einwaende || [];
     const topEinwand = einwaendeListe[0];
     const restEinwaende = einwaendeListe.slice(1);
     const topEinwandHtml = topEinwand ? `<div class="briefing-section"><div class="briefing-cap">Häufigster Einwand</div><div class="einwand"><p class="einwand-q">❓ ${esc(topEinwand.frage||"")}</p><p class="einwand-a">✓ ${esc(topEinwand.antwort||"")}</p></div></div>` : "";
+    const ewId = "ew_" + Math.random().toString(36).slice(2);
     const restEinwandeHtml = restEinwaende.map(e=>`<div class="einwand"><p class="einwand-q">❓ ${esc(e.frage||"")}</p><p class="einwand-a">✓ ${esc(e.antwort||"")}</p></div>`).join("");
-    const ew = restEinwandeHtml ? `<div class="briefing-section"><div class="briefing-cap">Weitere Einwände</div>${restEinwandeHtml}</div>` : "";
+    const ew = restEinwandeHtml ? `<div class="briefing-section"><button class="briefing-toggle" onclick="var e=document.getElementById('${ewId}');e.classList.toggle('hidden');this.textContent=e.classList.contains('hidden')?'Weitere Einwände anzeigen ▼':'Weitere Einwände ausblenden ▲'">Weitere Einwände anzeigen ▼</button><div id="${ewId}" class="briefing-body hidden" style="margin-top:6px">${restEinwandeHtml}</div></div>` : "";
     const pdfUrl = `/d/${TOKEN}/briefing-pdf/${l._pdfIdx}`;
     briefingHtml = `<div class="briefing">
-      <p class="action-hint">Empfohlener Ablauf: Briefing lesen → anrufen → Brief nachschicken.</p>
+      <p class="action-hint">Selbst nutzen: Anrufen · Mail kopieren · Brief/PDF drucken</p>
+      <p class="action-hint" style="margin-top:3px">Optional: Ansprache durch uns übernehmen lassen</p>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button class="briefing-toggle" onclick="var b=document.getElementById('${brId}');b.classList.toggle('hidden');this.textContent=b.classList.contains('hidden')?'📋 Anruf-Briefing anzeigen':'📋 Anruf-Briefing ausblenden'">📋 Anruf-Briefing anzeigen</button>
         ${mailToggleBtn}
@@ -265,10 +270,10 @@ function card(l){
       ${mailBodyHtml}
       <div class="upgrade-hint">
         <div class="upgrade-hint-text">
-          <div class="upgrade-hint-label">Keine Zeit für Ansprache?</div>
-          <div class="upgrade-hint-sub">Wir kontaktieren, fassen nach und berichten.</div>
+          <div class="upgrade-hint-label">Ansprache &amp; Nachfassen beauftragen</div>
+          <div class="upgrade-hint-sub">Wir kontaktieren, haken nach und berichten.</div>
         </div>
-        <a class="upgrade-hint-link" href="mailto:kontakt@rebellsystem.com?subject=Lead-Aktivierung">Jetzt anfragen →</a>
+        <a class="upgrade-hint-link" href="mailto:emilio@rebellsystem.com?subject=Ansprache%20beauftragen">Ansprache übernehmen lassen →</a>
       </div>
     </div>`;
   }
