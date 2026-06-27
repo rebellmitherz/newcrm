@@ -94,6 +94,12 @@
   .mail-text{color:var(--txt);font-size:12.5px;line-height:1.6;white-space:pre-wrap;margin:0;font-family:inherit}
   .copy-btn{align-self:flex-start;background:rgba(110,168,254,.12);border:1px solid rgba(110,168,254,.35);color:var(--acc);border-radius:8px;padding:4px 11px;font-size:12px;font-weight:600;cursor:pointer}
   .copy-btn:hover{background:rgba(110,168,254,.22)}
+  .upgrade-hint{border-top:1px solid var(--line);padding-top:12px;margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .upgrade-hint-text{display:flex;flex-direction:column;gap:2px}
+  .upgrade-hint-label{font-size:12.5px;font-weight:600;color:var(--txt)}
+  .upgrade-hint-sub{font-size:11.5px;color:var(--mut)}
+  .upgrade-hint-link{color:var(--acc);text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap}
+  .upgrade-hint-link:hover{text-decoration:underline}
   /* LinkedIn */
   .li-block{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:11px;margin-top:2px}
   .li-foto{width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--line);flex:none}
@@ -257,6 +263,13 @@ function card(l){
       </div>
       <div id="${brId}" class="briefing-body hidden">${topEinwandHtml}${kp}${op}${ew}</div>
       ${mailBodyHtml}
+      <div class="upgrade-hint">
+        <div class="upgrade-hint-text">
+          <div class="upgrade-hint-label">Keine Zeit für Ansprache?</div>
+          <div class="upgrade-hint-sub">Wir kontaktieren, fassen nach und berichten.</div>
+        </div>
+        <a class="upgrade-hint-link" href="mailto:kontakt@rebellsystem.com?subject=Lead-Aktivierung">Jetzt anfragen →</a>
+      </div>
     </div>`;
   }
   return `<div class="card ${stufe}">
