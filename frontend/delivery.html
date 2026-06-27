@@ -240,8 +240,12 @@ function card(l){
   if(br.kurzprofil || br.opener || (br.einwaende && br.einwaende.length)){
     const kp = br.kurzprofil ? `<div class="briefing-section"><div class="briefing-cap">Firmen-Kurzprofil</div><p class="briefing-text">${esc(br.kurzprofil)}</p></div>` : "";
     const op = br.opener ? `<div class="briefing-section"><div class="briefing-cap">Gesprächsöffner</div><p class="briefing-opener">"${esc(br.opener)}"</p></div>` : "";
-    const einwaende = (br.einwaende||[]).map(e=>`<div class="einwand"><p class="einwand-q">❓ ${esc(e.frage||"")}</p><p class="einwand-a">✓ ${esc(e.antwort||"")}</p></div>`).join("");
-    const ew = einwaende ? `<div class="briefing-section"><div class="briefing-cap">Einwand-Vorbereitung</div>${einwaende}</div>` : "";
+    const einwaendeListe = br.einwaende || [];
+    const topEinwand = einwaendeListe[0];
+    const restEinwaende = einwaendeListe.slice(1);
+    const topEinwandHtml = topEinwand ? `<div class="briefing-section"><div class="briefing-cap">Häufigster Einwand</div><div class="einwand"><p class="einwand-q">❓ ${esc(topEinwand.frage||"")}</p><p class="einwand-a">✓ ${esc(topEinwand.antwort||"")}</p></div></div>` : "";
+    const restEinwandeHtml = restEinwaende.map(e=>`<div class="einwand"><p class="einwand-q">❓ ${esc(e.frage||"")}</p><p class="einwand-a">✓ ${esc(e.antwort||"")}</p></div>`).join("");
+    const ew = restEinwandeHtml ? `<div class="briefing-section"><div class="briefing-cap">Weitere Einwände</div>${restEinwandeHtml}</div>` : "";
     const pdfUrl = `/d/${TOKEN}/briefing-pdf/${l._pdfIdx}`;
     briefingHtml = `<div class="briefing">
       <p class="action-hint">Empfohlener Ablauf: Briefing lesen → anrufen → Brief nachschicken.</p>
@@ -251,7 +255,7 @@ function card(l){
         <a href="${pdfUrl}" target="_blank" rel="noopener" class="pdf-btn">📄 PDF</a>
         <a href="/d/${TOKEN}/brief-pdf/${l._pdfIdx}" target="_blank" rel="noopener" class="pdf-btn brief-btn">✉ Brief</a>
       </div>
-      <div id="${brId}" class="briefing-body hidden">${kp}${op}${ew}</div>
+      <div id="${brId}" class="briefing-body hidden">${topEinwandHtml}${kp}${op}${ew}</div>
       ${mailBodyHtml}
     </div>`;
   }
