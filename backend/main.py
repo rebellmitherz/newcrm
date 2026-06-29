@@ -1031,11 +1031,27 @@ def create_delivery(body: DeliveryIn) -> dict[str, Any]:
     conn = db.get_conn()
     try:
         ordered: list[int] = []
-        if lead_ids:                      # nur real existierende Leads verknüpfen
+        blocked: list[int] = []
+        if lead_ids:                      # nur real existierende, PREMIUM-gegatete Leads verknüpfen
             ph = ",".join("?" * len(lead_ids))
-            valid = {r["id"] for r in conn.execute(
-                f"SELECT id FROM leads WHERE id IN ({ph})", lead_ids).fetchall()}
-            ordered = [i for i in lead_ids if i in valid]
+            rows = {r["id"]: db.dict_from_row(r) for r in conn.execute(
+                f"SELECT id, raw_json FROM leads WHERE id IN ({ph})", lead_ids).fetchall()}
+            for i in lead_ids:
+                if i not in rows:
+                    continue              # existiert nicht (skipped_missing)
+                if dlv.ist_auslieferbar(rows[i]):
+                    ordered.append(i)
+                else:
+                    blocked.append(i)     # Liefer-Tor: nicht PREMIUM = am Gate vorbei
+            # Wurden Leads übergeben, aber KEINER ist PREMIUM -> verweigern, statt eine
+            # Muell-/Leer-Lieferung anzulegen (schliesst den 20:21-Vorfall).
+            if not ordered and blocked:
+                raise HTTPException(
+                    400,
+                    f"Auslieferung verweigert: {len(blocked)} Lead(s) sind nicht PREMIUM "
+                    f"(am Premium-Gate vorbei). Lauf ueber engine_bridge.suchen_per_signal "
+                    f"(SIGNAL_NUR_PREMIUM=1) wiederholen - Klassik-b2bbot ist keine Lieferquelle.",
+                )
         cur = conn.execute(
             "INSERT INTO deliveries (token, title, customer, note, created_at) VALUES (?,?,?,?,?)",
             (token, title, (body.customer or None), (body.note or None), db.now_iso()),
@@ -1050,7 +1066,9 @@ def create_delivery(body: DeliveryIn) -> dict[str, Any]:
         row = db.dict_from_row(conn.execute("SELECT * FROM deliveries WHERE id=?", (did,)).fetchone())
     finally:
         conn.close()
-    return {**_delivery_row_public(row, len(ordered)), "skipped_missing": len(lead_ids) - len(ordered)}
+    return {**_delivery_row_public(row, len(ordered)),
+            "skipped_missing": len(lead_ids) - len(ordered) - len(blocked),
+            "blocked_not_premium": len(blocked)}
 
 
 @app.get("/api/deliveries", dependencies=[Depends(require_token)])
@@ -1181,6 +1199,33 @@ def public_delivery_csv(token: str):
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+@app.get("/d/{token}/brief-pdf/{lead_idx}")
+def public_brief_pdf(token: str, lead_idx: int):
+    """Personalisierter Akquise-Brief je Lead als druckfertige HTML-Seite."""
+    from fastapi.responses import HTMLResponse
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "KundenAgent"))
+    try:
+        from product.bridge.brief import brief_html
+    except ImportError:
+        raise HTTPException(500, "brief-Modul nicht gefunden (KundenAgent/product/bridge/brief.py)")
+    data = _public_delivery(token)
+    leads = data.get("leads") or []
+    if lead_idx < 0 or lead_idx >= len(leads):
+        raise HTTPException(404, "Lead nicht gefunden")
+    card = leads[lead_idx]
+    raw_lead = {
+        "company_name": card.get("firma") or "",
+        "city": card.get("ort") or "",
+        "entdeckt_per_signal": card.get("signal") or "",
+        "signal_titel": card.get("signal_titel") or "",
+        "contact_full_name": card.get("ansprechpartner") or "",
+        "aufhaenger": (card.get("briefing") or {}).get("opener") or "",
+    }
+    html = brief_html(raw_lead)
+    return HTMLResponse(content=html)
 
 
 @app.get("/d/{token}/briefing-pdf/{lead_idx}")

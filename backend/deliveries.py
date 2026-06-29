@@ -272,6 +272,28 @@ def _parse_raw(raw_json: Any) -> dict:
     return {}
 
 
+def ist_auslieferbar(lead_row: dict) -> bool:
+    """Liefer-Tor (FUSION-konform, kein Engine-Import): ein Lead darf NUR in eine
+    Kunden-Lieferung, wenn er das KundenAgent-Premium-Gate als PREMIUM passiert hat.
+    Die Engine schreibt das Urteil als ``premium_klasse`` ins ``raw_json``. Fehlt es
+    oder ist es != 'PREMIUM' (None/REVIEW/REJECT), lief der Lead am Gate vorbei (z. B.
+    Klassik-b2bbot) → NICHT ausliefern. (Schließt den 20:21-Vorfall.)"""
+    raw = _parse_raw(lead_row.get("raw_json"))
+    pk = str(raw.get("premium_klasse") or lead_row.get("premium_klasse") or "").strip().upper()
+    return pk == "PREMIUM"
+
+
+def nur_auslieferbare(lead_rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Teilt CRM-Lead-Zeilen in (auslieferbar, blockiert). Blockiert = nicht PREMIUM.
+    Aufruf-Punkt: Lieferungs-Erstellung in ``main.py`` — vor dem Schreiben der
+    delivery_leads die blockierten herausnehmen; bleibt 0 übrig → Lieferung verweigern."""
+    ok: list[dict] = []
+    blocked: list[dict] = []
+    for r in lead_rows:
+        (ok if ist_auslieferbar(r) else blocked).append(r)
+    return ok, blocked
+
+
 def build_card(lead_row: dict) -> dict:
     """Bildet eine CRM-Lead-Zeile (inkl. `raw_json`) auf die kundenfertige Karte ab.
 
